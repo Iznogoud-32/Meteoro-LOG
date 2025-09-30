@@ -216,7 +216,10 @@ begin
     end;
 
     if cmbStation.Items.Count > 0 then
-      cmbStation.ItemIndex := 0;
+      cmbStation.ItemIndex := 0
+    else
+      MessageDlg('No active stations available. Please add a station first.', 
+                 mtWarning, [mbOK], 0);
 
   finally
     cmbStation.Items.EndUpdate;

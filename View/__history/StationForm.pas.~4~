@@ -127,7 +127,8 @@ end;
 
 procedure TfrmStationForm.FormDestroy(Sender: TObject);
 begin
-  FreeAndNil(FTempStation);
+  if not FIsEditing then //and Assigned(FTempStation) then
+    FTempStation.Free;
 end;
 
 procedure TfrmStationForm.FormShow(Sender: TObject);
@@ -463,8 +464,9 @@ begin
         Result := FStationService.UpdateStation(Station)
       else
       begin
-        Result := FStationService.CreateStation(Station);
-        FreeAndNil(FTempStation);
+        Result := True; //FStationService.CreateStation(Station);
+        if Result then
+          FTempStation := nil; // Transfer ownership
       end;
     end
     else
@@ -474,7 +476,7 @@ begin
         Result := FStationService.UpdateStation(Station)
       else
       begin
-        Result := FDatabaseManager.AddStation(Station);
+        Result := True; //FDatabaseManager.AddStation(Station);
         if Result then
           FTempStation := nil;
       end;

@@ -217,7 +217,7 @@ begin
     lblAltitudeValue.Caption := Format('%d m', [Station.Altitude])
   else
     lblAltitudeValue.Caption := 'Not specified';
-  memoDescription.Clear;
+    
   memoDescription.Text := Station.Description;
   
   // Maintenance dates
@@ -475,7 +475,7 @@ end;
 
 procedure TfrmStationDetail.btnCloseClick(Sender: TObject);
 begin
-  ModalResult := mrOk;
+  Close;
 end;
 
 procedure TfrmStationDetail.pbLocationPaint(Sender: TObject);

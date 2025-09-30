@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils, System.Generics.Collections,
-  WeatherTypes, StationService, WeatherEntryService;
+  WeatherTypes, StationService;
 
 type
   IMainView = interface
@@ -18,11 +18,10 @@ type
   private
     FView: IMainView;
     FStationService: TStationService;
-    FWeatherEntryService: TWeatherEntryService;
   public
     constructor Create(AView: IMainView; 
-                      AStationService: TStationService;
-                      AWeatherEntryService: TWeatherEntryService);
+                      AStationService: TStationService);
+
     
     procedure Initialize;
     procedure RefreshDashboard;
@@ -39,12 +38,11 @@ implementation
 { TMainPresenter }
 
 constructor TMainPresenter.Create(AView: IMainView; 
-  AStationService: TStationService; AWeatherEntryService: TWeatherEntryService);
+  AStationService: TStationService);
 begin
   inherited Create;
   FView := AView;
   FStationService := AStationService;
-  FWeatherEntryService := AWeatherEntryService;
 end;
 
 procedure TMainPresenter.Initialize;
@@ -76,22 +74,6 @@ var
 begin
   Stats := FStationService.GetStatistics;
   Result := Stats.Active;
-end;
-
-function TMainPresenter.GetTotalEntries: Integer;
-var
-  Stats: TWeatherEntryStatistics;
-begin
-  Stats := FWeatherEntryService.GetStatistics;
-  Result := Stats.TotalEntries;
-end;
-
-function TMainPresenter.GetLastEntryDate: TDateTime;
-var
-  Stats: TWeatherEntryStatistics;
-begin
-  Stats := FWeatherEntryService.GetStatistics;
-  Result := Stats.LastEntryDate;
 end;
 
 end.

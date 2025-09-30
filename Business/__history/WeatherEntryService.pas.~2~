@@ -164,7 +164,7 @@ begin
         Matches := Matches and (Entry.Conditions = AFilter.Conditions);
       
       if Matches then
-        Result.Add(Entry.clone);
+        Result.Add(Entry);
     end;
   finally
     AllEntries.Free;

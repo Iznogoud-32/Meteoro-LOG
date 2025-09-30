@@ -15,14 +15,14 @@ uses
   
   // Application layers
   WeatherTypes, DatabaseManager, 
-  StationService, WeatherEntryService,
-  StationPresenter, WeatherEntryPresenter, MainPresenter, System.ImageList,
+  StationService,
+  StationPresenter, MainPresenter, System.ImageList,
   Vcl.ImgList, Vcl.VirtualImageList, Vcl.BaseImageCollection,
   Vcl.ImageCollection, scImageCollection,  Vcl.Imaging.pngimage,
   TMS.MI.ProfilerComponent;
 
 type
-  TFrmMain = class(TForm, IStationListView, IWeatherEntryListView, IMainView)
+  TFrmMain = class(TForm, IStationListView, IMainView)
     // Styling Components
     scStyleManager1: TscStyleManager;
     scStyledForm1: TscStyledForm;
@@ -292,6 +292,7 @@ type
     lblTotalEntries: TLabel;
     lblTotalStations: TLabel;
     btnRefreshStats: TButton;
+    TMSMemInsightProfiler1: TTMSMemInsightProfiler;
 
     // Form events
     procedure FormCreate(Sender: TObject);
@@ -333,11 +334,6 @@ type
     procedure AdvLvStationsSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
     
     // Weather entry events
-    procedure btnAddEntryClick(Sender: TObject);
-    procedure btnEditEntryClick(Sender: TObject);
-    procedure btnDeleteEntryClick(Sender: TObject);
-    procedure btnRefreshDataClick(Sender: TObject);
-    procedure AdvGridWeatherDataSelectCell(Sender: TObject; ACol, ARow: Integer; var CanSelect: Boolean);
     procedure cmbStationChange(Sender: TObject);
     
     // Timer events
@@ -346,8 +342,6 @@ type
     // Navigation
     procedure scGPSettingsButtonClick(Sender: TObject);
     procedure ExitButtonClick(Sender: TObject);
-    procedure btnMoonDetailsClick(Sender: TObject);
-    procedure BtnSunDetailsClick(Sender: TObject);
 
   private
     // Data layer
@@ -355,25 +349,17 @@ type
     
     // Service layer
     FStationService: TStationService;
-    FWeatherEntryService: TWeatherEntryService;
     
     // Presenter layer
     FMainPresenter: TMainPresenter;
     FStationPresenter: TStationListPresenter;
-    FWeatherEntryPresenter: TWeatherEntryListPresenter;
     
     // Local data for UI binding
     FDisplayedStations: TWeatherStationList;
-    FDisplayedEntries: TWeatherEntryList;
     
     // IStationListView implementation
     procedure DisplayStations(const Stations: TWeatherStationList);
     procedure DisplayStatistics(const Stats: TStationStatistics); overload;
-
-    // IWeatherEntryListView implementation
-    procedure DisplayEntries(const Entries: TWeatherEntryList);
-    procedure DisplayStatistics(const Stats: TWeatherEntryStatistics); overload;
-    function ConfirmDelete_Entry(const EntryInfo: string): Boolean;
     
     // IMainView implementation
     procedure UpdateDashboard;
@@ -392,10 +378,7 @@ type
     procedure LoadStationStatuses;
     procedure PopulateStationCombo;
     function GetSelectedStation: TWeatherStation;
-    function GetSelectedEntry: TWeatherEntry;
     procedure UpdateStationActions;
-    procedure ClearStationCombo;
-    procedure UpdateEntryActions;
     
   public
     { Public declarations }
@@ -409,7 +392,7 @@ implementation
 {$R *.dfm}
 
 uses
-  Math, StationForm, StationDetailForm, WeatherEntryForm, MoonDetails, SunDetails,
+  Math, StationForm, StationDetailForm,
   System.UITypes, DateUtils;
 
 { TFrmMain }
@@ -443,7 +426,6 @@ begin
    scGPToggleSwitch_win11.State := scswOn;
 
   FDisplayedStations := nil;
-  FDisplayedEntries := nil;
   
   InitializeLayers;
   InitializeUI;
@@ -458,12 +440,10 @@ begin
   
   // Service Layer
   FStationService := TStationService.Create(FDatabase);
-  FWeatherEntryService := TWeatherEntryService.Create(FDatabase);
 
   // Presenter Layer
-  FMainPresenter := TMainPresenter.Create(Self, FStationService, FWeatherEntryService);
+  FMainPresenter := TMainPresenter.Create(Self, FStationService);
   FStationPresenter := TStationListPresenter.Create(Self, FStationService);
-  FWeatherEntryPresenter := TWeatherEntryListPresenter.Create(Self, FWeatherEntryService);
 end;
 
 procedure TFrmMain.InitializeUI;
@@ -492,7 +472,6 @@ begin
   // Initialize presenters
   FMainPresenter.Initialize;
   FStationPresenter.Initialize;
-  FWeatherEntryPresenter.Initialize;
 
   // Populate controls
   PopulateStationCombo;
@@ -506,24 +485,19 @@ procedure TFrmMain.FormDestroy(Sender: TObject);
 begin
   tmrRefresh.Enabled := False;
   tmrSync.Enabled := False;
-
-  // Local data
-  ClearStationCombo;
-  FDisplayedStations.Free;
-  FDisplayedEntries.Free;
-
+  
   // Presenter layer;
-  FWeatherEntryPresenter.Free;
   FStationPresenter.Free;
   FMainPresenter.Free;
-
+  
   // Service layer
-  FWeatherEntryService.Free;
   FStationService.Free;
   
   // Data layer
   FDatabase.Free;
-
+  
+  // Local data
+  FDisplayedStations.Free;
 end;
 
 procedure TFrmMain.FormClose(Sender: TObject; var Action: TCloseAction);
@@ -543,7 +517,7 @@ begin
   AdvLvStations.Items.BeginUpdate;
   try
     AdvLvStations.Items.Clear;
-
+    
     FreeAndNil(FDisplayedStations);
     FDisplayedStations := TWeatherStationList.Create;
     
@@ -599,72 +573,12 @@ begin
   lblStatsInactiveValue.Font.Color := $00808080;
 end;
 
-{ IWeatherEntryListView Implementation }
-
-procedure TFrmMain.DisplayEntries(const Entries: TWeatherEntryList);
-var
-  Entry: TWeatherEntry;
-  I: Integer;
-  StationName: string;
-begin
-  AdvGridWeatherData.RowCount := Max(2, Entries.Count + 1);
-  
-  FreeAndNil(FDisplayedEntries);
-  FDisplayedEntries := TWeatherEntryList.Create;
-  
-  for I := 0 to Entries.Count - 1 do
-  begin
-    Entry := Entries[I];
-    StationName := FDatabase.GetStationName(Entry.StationID);
-    
-    AdvGridWeatherData.Cells[0, I + 1] := FormatDateTime('dd/mm/yyyy hh:nn', Entry.Timestamp);
-    AdvGridWeatherData.Cells[1, I + 1] := StationName;
-    AdvGridWeatherData.Cells[2, I + 1] := FloatToStrF(Entry.Temperature, ffFixed, 10, 1);
-    AdvGridWeatherData.Cells[3, I + 1] := FloatToStrF(Entry.Humidity, ffFixed, 10, 1);
-    AdvGridWeatherData.Cells[4, I + 1] := FloatToStrF(Entry.Pressure, ffFixed, 10, 1);
-    AdvGridWeatherData.Cells[5, I + 1] := FloatToStrF(Entry.WindSpeed, ffFixed, 10, 1);
-    AdvGridWeatherData.Cells[6, I + 1] := Entry.WindDirection;
-    AdvGridWeatherData.Cells[7, I + 1] := Entry.Conditions;
-    AdvGridWeatherData.Cells[8, I + 1] := Entry.Notes;
-    
-    AdvGridWeatherData.Objects[0, I + 1] := TObject(FDisplayedEntries.Count);
-    FDisplayedEntries.Add(Entry.clone);
-  end;
-  
-  UpdateEntryActions;
-end;
-
-procedure TFrmMain.DisplayStatistics(const Stats: TWeatherEntryStatistics);
-begin
-  lblTotalEntriesValue.Caption := IntToStr(Stats.TotalEntries);
-  lblActiveStationsValue.Caption := IntToStr(FMainPresenter.GetActiveStations);
-  
-  if Stats.TotalEntries > 0 then
-    lblLastEntryValue.Caption := FormatDateTime('dd/mm/yyyy hh:nn', Stats.LastEntryDate)
-  else
-    lblLastEntryValue.Caption := 'No data';
-end;
-
-function TFrmMain.ConfirmDelete_Entry(const EntryInfo: string): Boolean;
-begin
-  Result := MessageDlg(
-    Format('Delete this weather entry?'#13#10#13#10'%s'#13#10#13#10 +
-           'This action cannot be undone.', [EntryInfo]),
-    mtConfirmation, [mbYes, mbNo], 0) = mrYes;
-end;
 
 { IMainView Implementation }
 
 procedure TFrmMain.UpdateDashboard;
 begin
-  lblTotalEntriesValue.Caption := IntToStr(FMainPresenter.GetTotalEntries);
   lblActiveStationsValue.Caption := IntToStr(FMainPresenter.GetActiveStations);
-  
-  if FMainPresenter.GetLastEntryDate > 0 then
-    lblLastEntryValue.Caption := FormatDateTime('dd/mm/yyyy hh:nn', 
-                                                 FMainPresenter.GetLastEntryDate)
-  else
-    lblLastEntryValue.Caption := 'No data';
 end;
 
 { Common IView Methods }
@@ -695,7 +609,6 @@ end;
 procedure TFrmMain.RefreshUI;
 begin
   UpdateStationActions;
-  UpdateEntryActions;
   Application.ProcessMessages;
 end;
 
@@ -831,90 +744,18 @@ begin
   UpdateStationActions;
 end;
 
-{ Weather Entry Event Handlers }
-
-procedure TFrmMain.btnAddEntryClick(Sender: TObject);
-var
-  EntryForm: TfrmWeatherEntry;
-begin
-  EntryForm := TfrmWeatherEntry.Create(Self);
-  try
-    EntryForm.EditMode := False;
-    EntryForm.Database := FDatabase;
-    EntryForm.WeatherEntryService := FWeatherEntryService;
-    
-    if EntryForm.ShowModal = mrOk then
-      FWeatherEntryPresenter.Refresh;
-  finally
-    EntryForm.Free;
-  end;
-end;
-
-procedure TFrmMain.btnEditEntryClick(Sender: TObject);
-var
-  EntryForm: TfrmWeatherEntry;
-  SelectedEntry: TWeatherEntry;
-begin
-  SelectedEntry := GetSelectedEntry;
-  if not Assigned(SelectedEntry) then
-  begin
-    ShowInfo('Please select an entry to edit.');
-    Exit;
-  end;
-  
-  EntryForm := TfrmWeatherEntry.Create(Self);
-  try
-    EntryForm.EditMode := True;
-    EntryForm.Database := FDatabase;
-    EntryForm.WeatherEntryService := FWeatherEntryService;
-    EntryForm.EditEntry := SelectedEntry;
-    
-    if EntryForm.ShowModal = mrOk then
-      FWeatherEntryPresenter.Refresh;
-  finally
-    EntryForm.Free;
-  end;
-end;
-
-procedure TFrmMain.btnDeleteEntryClick(Sender: TObject);
-var
-  SelectedEntry: TWeatherEntry;
-begin
-  SelectedEntry := GetSelectedEntry;
-  if not Assigned(SelectedEntry) then
-  begin
-    ShowInfo('Please select an entry to delete.');
-    Exit;
-  end;
-  
-  FWeatherEntryPresenter.DeleteEntry(SelectedEntry.ID);
-end;
-
-procedure TFrmMain.btnRefreshDataClick(Sender: TObject);
-begin
-  FWeatherEntryPresenter.Refresh;
-  FMainPresenter.RefreshDashboard;
-end;
-
-procedure TFrmMain.AdvGridWeatherDataSelectCell(Sender: TObject; ACol, 
-  ARow: Integer; var CanSelect: Boolean);
-begin
-  CanSelect := True;
-  UpdateEntryActions;
-end;
 
 procedure TFrmMain.cmbStationChange(Sender: TObject);
 var
   SelectedStation: TWeatherStation;
 begin
-  if (cmbStation.ItemIndex >= 0) and 
+  if (cmbStation.ItemIndex >= 0) and
      Assigned(cmbStation.Items.Objects[cmbStation.ItemIndex]) then
   begin
     SelectedStation := TWeatherStation(cmbStation.Items.Objects[cmbStation.ItemIndex]);
-    FWeatherEntryPresenter.FilterByStation(SelectedStation.ID);
-  end
-  else
-    FWeatherEntryPresenter.ClearFilters;
+
+  end;
+
 end;
 
 { Timer Events }
@@ -961,7 +802,11 @@ var
 begin
   cmbStation.Items.BeginUpdate;
   try
-    ClearStationCombo;
+    cmbStation.Items.Clear;
+
+    for I := 0 to cmbStation.Items.Count - 1 do
+      if Assigned(cmbStation.Items.Objects[I]) then
+        cmbStation.Items.Objects[I].Free;
 
     Stations := FStationService.GetActiveStations;
     try
@@ -996,22 +841,6 @@ begin
   end;
 end;
 
-function TFrmMain.GetSelectedEntry: TWeatherEntry;
-var
-  Index: Integer;
-begin
-  Result := nil;
-  
-  if (AdvGridWeatherData.Row > 0) and 
-     (AdvGridWeatherData.Row < AdvGridWeatherData.RowCount) and
-     Assigned(FDisplayedEntries) then
-  begin
-    Index := Integer(AdvGridWeatherData.Objects[0, AdvGridWeatherData.Row]);
-    if (Index >= 0) and (Index < FDisplayedEntries.Count) then
-      Result := FDisplayedEntries[Index];
-  end;
-end;
-
 procedure TFrmMain.UpdateStationActions;
 var
   HasSelection: Boolean;
@@ -1023,16 +852,6 @@ begin
   actViewStation.Enabled := HasSelection;
 end;
 
-procedure TFrmMain.UpdateEntryActions;
-var
-  HasSelection: Boolean;
-begin
-  HasSelection := (AdvGridWeatherData.Row > 0) and 
-                  (AdvGridWeatherData.Row < AdvGridWeatherData.RowCount);
-  
-  btnEditEntry.Enabled := HasSelection;
-  btnDeleteEntry.Enabled := HasSelection;
-end;
 
 { Window Controls }
 
@@ -1247,36 +1066,6 @@ begin
   TStyleManager.SetStyle(scComboBoxTheme.Items[scComboBoxTheme.ItemIndex]);
   if scStyledForm1.FluentUIBackground = scfuibNone then
     Color := scDrawUtils.GetStyleColor(clBtnFace);
-end;
-
-procedure TFrmMain.ClearStationCombo;
-var
-  I: Integer;
-begin
-  for I := 0 to cmbStation.Items.Count - 1 do
-    if Assigned(cmbStation.Items.Objects[I]) then
-      cmbStation.Items.Objects[I].Free;
-  cmbStation.Items.Clear;
-end;
-
-procedure TfrmMain.btnMoonDetailsClick(Sender: TObject);
-begin
-   with TMoonForm.Create(Self) do
-   try
-     ShowModal;
-   finally
-     Free;
-   end;
-end;
-
-procedure TfrmMain.BtnSunDetailsClick(Sender: TObject);
-begin
-   with TSunForm.Create(Self) do
-   try
-     ShowModal;
-   finally
-     Free;
-   end;
 end;
 
 end.

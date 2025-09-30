@@ -475,7 +475,7 @@ end;
 
 procedure TfrmStationDetail.btnCloseClick(Sender: TObject);
 begin
-  ModalResult := mrOk;
+  Close;
 end;
 
 procedure TfrmStationDetail.pbLocationPaint(Sender: TObject);

@@ -1105,7 +1105,6 @@ object FrmMain: TFrmMain
                   Font.Style = []
                   ParentFont = False
                   TabOrder = 0
-                  OnClick = BtnSunDetailsClick
                 end
               end
               object pnlMoon: TPanel
@@ -1144,7 +1143,6 @@ object FrmMain: TFrmMain
                   Font.Style = []
                   ParentFont = False
                   TabOrder = 0
-                  OnClick = btnMoonDetailsClick
                 end
               end
             end
@@ -3353,7 +3351,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 0
-                      OnClick = btnAddEntryClick
                     end
                     object btnEditEntry: TButton
                       Left = 96
@@ -3369,7 +3366,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 1
-                      OnClick = btnEditEntryClick
                     end
                     object btnDeleteEntry: TButton
                       Left = 184
@@ -3385,7 +3381,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 2
-                      OnClick = btnDeleteEntryClick
                     end
                     object btnRefreshData: TButton
                       Left = 272
@@ -3400,7 +3395,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 3
-                      OnClick = btnRefreshDataClick
                     end
                   end
                   object AdvGridWeatherData: TAdvStringGrid
@@ -3416,7 +3410,6 @@ object FrmMain: TFrmMain
                     RowCount = 2
                     Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goRowSelect, goThumbTracking, goFixedRowDefAlign]
                     TabOrder = 1
-                    OnSelectCell = AdvGridWeatherDataSelectCell
                     GridLineColor = 13948116
                     GridFixedLineColor = 11250603
                     ActiveCellFont.Charset = DEFAULT_CHARSET
@@ -28948,7 +28941,6 @@ object FrmMain: TFrmMain
     object actViewStation: TAction
       Caption = 'Voir'
       Hint = 'Voir les d'#233'tails de la station'
-      OnExecute = actViewStationExecute
     end
     object actRefresh: TAction
       Caption = 'Actualiser'

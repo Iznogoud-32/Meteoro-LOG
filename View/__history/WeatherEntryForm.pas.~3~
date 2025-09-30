@@ -136,7 +136,7 @@ end;
 procedure TfrmWeatherEntry.FormDestroy(Sender: TObject);
 begin
   FreeAndNil(FWeatherStations);
-  //if not FEditMode then
+  if not FEditMode then
     FreeAndNil(FCurrentEntry);
 end;
 
@@ -159,6 +159,10 @@ begin
   dtpDate.Format := 'dd/MM/yyyy';
   dtpTime.Format := 'HH:mm';
   dtpTime.Kind := dtkTime;
+  if FEditMode then
+    cmbStation.Enabled := False
+  else
+    cmbStation.Enabled := True;
 end;
 
 procedure TfrmWeatherEntry.FormShow(Sender: TObject);
@@ -183,6 +187,7 @@ begin
       ModalResult := mrCancel;
       Exit;
     end;
+    
     LoadEntryData;
   end
   else
@@ -192,7 +197,6 @@ begin
     ClearForm;
     dtpDate.Date := Date;
     dtpTime.Time := Time;
-
   end;
 end;
 
@@ -216,7 +220,10 @@ begin
     end;
 
     if cmbStation.Items.Count > 0 then
-      cmbStation.ItemIndex := 0;
+      cmbStation.ItemIndex := 0
+    else
+      MessageDlg('No active stations available. Please add a station first.', 
+                 mtWarning, [mbOK], 0);
 
   finally
     cmbStation.Items.EndUpdate;
@@ -252,13 +259,7 @@ begin
     end;
 
     if StationIndex >= 0 then
-      cmbStation.ItemIndex := StationIndex
-    else
-      begin
-        MessageDlg('Cannot edit entry from a non-active station.', mtError, [mbOK], 0);
-        ModalResult := mrCancel;
-        Exit;
-      end;
+      cmbStation.ItemIndex := StationIndex;
 
     dtpDate.Date := DateOf(FCurrentEntry.Timestamp);
     dtpTime.Time := TimeOf(FCurrentEntry.Timestamp);

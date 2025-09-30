@@ -135,6 +135,18 @@ begin
   LoadStations;
 end;
 
+//procedure TStationListPresenter.AddStation;
+//begin
+//  // Note: Cette méthode ne fait que signaler l'action
+//  // L'ouverture du formulaire reste dans la vue
+//  // Le formulaire utilisera directement le service pour sauvegarder
+//end;
+//
+//procedure TStationListPresenter.EditStation(const AStationID: string);
+//begin
+//  // Similaire à AddStation
+//end;
+
 procedure TStationListPresenter.DeleteStation(const AStationID: string);
 var
   Station: TWeatherStation;

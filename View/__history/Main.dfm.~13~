@@ -875,7 +875,6 @@ object FrmMain: TFrmMain
             MouseWheelDelta = 0
             HorzPadding = 8
             VertPadding = 8
-            ExplicitWidth = 1098
             FullHeight = 200
             object AdvPnlAlmanac: TAdvPanel
               Left = 8
@@ -1105,7 +1104,6 @@ object FrmMain: TFrmMain
                   Font.Style = []
                   ParentFont = False
                   TabOrder = 0
-                  OnClick = BtnSunDetailsClick
                 end
               end
               object pnlMoon: TPanel
@@ -1144,7 +1142,6 @@ object FrmMain: TFrmMain
                   Font.Style = []
                   ParentFont = False
                   TabOrder = 0
-                  OnClick = btnMoonDetailsClick
                 end
               end
             end
@@ -1503,7 +1500,6 @@ object FrmMain: TFrmMain
                 ActivePage = tsLastWeatherEntry
                 Align = alClient
                 TabOrder = 0
-                ExplicitWidth = 1082
                 object tsLastWeatherEntry: TTabSheet
                   Caption = 'Last Weather Entry'
                   object lblStation: TLabel
@@ -3353,7 +3349,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 0
-                      OnClick = btnAddEntryClick
                     end
                     object btnEditEntry: TButton
                       Left = 96
@@ -3369,7 +3364,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 1
-                      OnClick = btnEditEntryClick
                     end
                     object btnDeleteEntry: TButton
                       Left = 184
@@ -3385,7 +3379,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 2
-                      OnClick = btnDeleteEntryClick
                     end
                     object btnRefreshData: TButton
                       Left = 272
@@ -3400,7 +3393,6 @@ object FrmMain: TFrmMain
                       Font.Style = []
                       ParentFont = False
                       TabOrder = 3
-                      OnClick = btnRefreshDataClick
                     end
                   end
                   object AdvGridWeatherData: TAdvStringGrid
@@ -3416,7 +3408,6 @@ object FrmMain: TFrmMain
                     RowCount = 2
                     Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goRowSelect, goThumbTracking, goFixedRowDefAlign]
                     TabOrder = 1
-                    OnSelectCell = AdvGridWeatherDataSelectCell
                     GridLineColor = 13948116
                     GridFixedLineColor = 11250603
                     ActiveCellFont.Charset = DEFAULT_CHARSET
@@ -28954,5 +28945,15 @@ object FrmMain: TFrmMain
       Caption = 'Actualiser'
       Hint = 'Actualiser la liste des stations'
     end
+  end
+  object TMSMemInsightProfiler1: TTMSMemInsightProfiler
+    GUIOptions.Font.Charset = DEFAULT_CHARSET
+    GUIOptions.Font.Color = clWindowText
+    GUIOptions.Font.Height = -12
+    GUIOptions.Font.Name = 'Segoe UI'
+    GUIOptions.Font.Style = []
+    GUIOptions.ActiveTab = tsStatistics
+    Left = 905
+    Top = 32
   end
 end

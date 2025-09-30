@@ -28955,4 +28955,14 @@ object FrmMain: TFrmMain
       Hint = 'Actualiser la liste des stations'
     end
   end
+  object TMSMemInsightProfiler1: TTMSMemInsightProfiler
+    GUIOptions.Font.Charset = DEFAULT_CHARSET
+    GUIOptions.Font.Color = clWindowText
+    GUIOptions.Font.Height = -12
+    GUIOptions.Font.Name = 'Segoe UI'
+    GUIOptions.Font.Style = []
+    GUIOptions.ActiveTab = tsStatistics
+    Left = 905
+    Top = 32
+  end
 end

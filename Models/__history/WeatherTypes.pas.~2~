@@ -445,11 +445,6 @@ begin
                               Self.FPressure, Self.FWindSpeed, Self.FPrecipitations,
                               Self.FSnow, Self.FWindDirection, Self.FConditions,
                               Self.FNotes);
-  Result.ID := Self.FID;
-  Result.Timestamp := Self.FTimestamp;
-  Result.Photo := Self.FPhoto;
-  Result.CreatedAt := Self.FCreatedAt;
-  Result.UpdatedAt := Self.FUpdatedAt;
 end;
 
 constructor TWeatherEntryList.Create;

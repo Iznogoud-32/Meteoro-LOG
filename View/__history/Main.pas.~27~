@@ -628,7 +628,7 @@ begin
     AdvGridWeatherData.Cells[8, I + 1] := Entry.Notes;
     
     AdvGridWeatherData.Objects[0, I + 1] := TObject(FDisplayedEntries.Count);
-    FDisplayedEntries.Add(Entry.clone);
+    FDisplayedEntries.Add(Entry);
   end;
   
   UpdateEntryActions;

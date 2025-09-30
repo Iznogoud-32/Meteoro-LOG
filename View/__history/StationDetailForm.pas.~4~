@@ -110,7 +110,7 @@ implementation
 {$R *.dfm}
 
 uses
-  StationDetailPresenter, StationPresenter, StationForm, Math, System.UITypes, System.DateUtils;
+  StationDetailPresenter, StationForm, Math, System.UITypes, System.DateUtils;
 
 { TfrmStationDetail }
 
@@ -217,7 +217,7 @@ begin
     lblAltitudeValue.Caption := Format('%d m', [Station.Altitude])
   else
     lblAltitudeValue.Caption := 'Not specified';
-  memoDescription.Clear;
+    
   memoDescription.Text := Station.Description;
   
   // Maintenance dates
@@ -459,9 +459,6 @@ begin
     StationForm.StationService := FStationService;
     StationForm.EditStation := SelectedStation;
 
-    if StationForm.ShowModal = mrOk then
-      TStationDetailPresenter(FPresenter).Refresh;
-
   finally
     StationForm.Free;
   end;
@@ -475,7 +472,7 @@ end;
 
 procedure TfrmStationDetail.btnCloseClick(Sender: TObject);
 begin
-  ModalResult := mrOk;
+  Close;
 end;
 
 procedure TfrmStationDetail.pbLocationPaint(Sender: TObject);

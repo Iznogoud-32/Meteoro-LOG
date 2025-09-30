@@ -26,6 +26,20 @@ type
     procedure Refresh;
   end;
 
+//  // Interface definition (doit être ici pour éviter les dépendances circulaires)
+//  IStationDetailView = interface
+//    ['{D4E5F6A7-B8C9-0123-4567-890ABCDEF345}']
+//    procedure DisplayStationInfo(const Station: TWeatherStation);
+//    procedure DisplaySensors(const Sensors: TWeatherStationSensorList);
+//    procedure ShowMaintenanceAlert(const Message: string);
+//    procedure HideMaintenanceAlert;
+//    procedure ShowError(const Message: string);
+//    procedure ShowSuccess(const Message: string);
+//    procedure ShowInfo(const Message: string);
+//    function ConfirmDelete(const StationName: string): Boolean;
+//    procedure CloseView;
+//  end;
+
 implementation
 
 uses

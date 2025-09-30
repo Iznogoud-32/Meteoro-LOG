@@ -1,4 +1,4 @@
-﻿unit StationPresenter;
+unit StationPresenter;
 
 interface
 
@@ -43,8 +43,8 @@ type
     procedure ClearFilters;
     
     // CRUD operations
-//    procedure AddStation;
-//    procedure EditStation(const AStationID: string);
+    procedure AddStation;
+    procedure EditStation(const AStationID: string);
     procedure DeleteStation(const AStationID: string);
     procedure ViewStation(const AStationID: string);
   end;
@@ -133,6 +133,18 @@ procedure TStationListPresenter.ClearFilters;
 begin
   FCurrentFilter := TStationFilter.All;
   LoadStations;
+end;
+
+procedure TStationListPresenter.AddStation;
+begin
+  // Note: Cette méthode ne fait que signaler l'action
+  // L'ouverture du formulaire reste dans la vue
+  // Le formulaire utilisera directement le service pour sauvegarder
+end;
+
+procedure TStationListPresenter.EditStation(const AStationID: string);
+begin
+  // Similaire à AddStation
 end;
 
 procedure TStationListPresenter.DeleteStation(const AStationID: string);

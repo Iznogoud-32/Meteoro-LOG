@@ -59,8 +59,8 @@ end;
 
 procedure TWeatherEntryListPresenter.Initialize;
 begin
-  LoadEntries;
-  LoadStatistics;
+  //LoadEntries;
+  //LoadStatistics;
 end;
 
 procedure TWeatherEntryListPresenter.Refresh;

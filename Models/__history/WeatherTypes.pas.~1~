@@ -122,7 +122,6 @@ type
     constructor Create(const AStationID: string; ATemperature,
                         AHumidity, APressure, AWindSpeed, APrecipitations, ASnow: Double;
                         const AWindDirection, AConditions, ANotes: string);
-    function Clone: TWeatherEntry;
 
     property ID: string read FID write FID;
     property StationID: string read FStationID write FStationID;
@@ -437,19 +436,6 @@ begin
   Notes := ANotes;
   CreatedAt := Now;
   UpdatedAt := Now;
-end;
-
-function TWeatherentry.Clone: TWeatherEntry;
-begin
-  Result := TWeatherEntry.Create(Self.FStationID, Self.FTemperature, Self.FHumidity,
-                              Self.FPressure, Self.FWindSpeed, Self.FPrecipitations,
-                              Self.FSnow, Self.FWindDirection, Self.FConditions,
-                              Self.FNotes);
-  Result.ID := Self.FID;
-  Result.Timestamp := Self.FTimestamp;
-  Result.Photo := Self.FPhoto;
-  Result.CreatedAt := Self.FCreatedAt;
-  Result.UpdatedAt := Self.FUpdatedAt;
 end;
 
 constructor TWeatherEntryList.Create;

@@ -66,6 +66,7 @@ object frmStationDetail: TfrmStationDetail
       Width = 75
       Height = 25
       Action = actEdit
+      Caption = 'Modify'
       TabOrder = 0
     end
     object btnDelete: TButton
@@ -83,7 +84,6 @@ object frmStationDetail: TfrmStationDetail
       Width = 75
       Height = 25
       Caption = 'Close'
-      ModalResult = 1
       TabOrder = 2
       OnClick = btnCloseClick
     end

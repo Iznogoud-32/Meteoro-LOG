@@ -216,7 +216,10 @@ begin
     end;
 
     if cmbStation.Items.Count > 0 then
-      cmbStation.ItemIndex := 0;
+      cmbStation.ItemIndex := 0
+    else
+      MessageDlg('No active stations available. Please add a station first.', 
+                 mtWarning, [mbOK], 0);
 
   finally
     cmbStation.Items.EndUpdate;
@@ -252,13 +255,7 @@ begin
     end;
 
     if StationIndex >= 0 then
-      cmbStation.ItemIndex := StationIndex
-    else
-      begin
-        MessageDlg('Cannot edit entry from a non-active station.', mtError, [mbOK], 0);
-        ModalResult := mrCancel;
-        Exit;
-      end;
+      cmbStation.ItemIndex := StationIndex;
 
     dtpDate.Date := DateOf(FCurrentEntry.Timestamp);
     dtpTime.Time := TimeOf(FCurrentEntry.Timestamp);

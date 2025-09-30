@@ -96,7 +96,7 @@ object frmStationForm: TfrmStationForm
       Top = 0
       Width = 777
       Height = 605
-      ActivePage = tsGeneral
+      ActivePage = tsSensors
       Align = alClient
       TabOrder = 0
       object tsGeneral: TTabSheet

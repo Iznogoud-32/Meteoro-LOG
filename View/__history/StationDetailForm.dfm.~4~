@@ -83,7 +83,6 @@ object frmStationDetail: TfrmStationDetail
       Width = 75
       Height = 25
       Caption = 'Close'
-      ModalResult = 1
       TabOrder = 2
       OnClick = btnCloseClick
     end

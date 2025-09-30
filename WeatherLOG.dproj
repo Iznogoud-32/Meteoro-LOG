@@ -127,43 +127,43 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="Models\WeatherTypes.pas"/>
-        <DCCReference Include="Business\Almanac.pas"/>
         <DCCReference Include="Business\StationService.pas"/>
         <DCCReference Include="Business\ValidationService.pas"/>
-        <DCCReference Include="Business\WeatherEntryService.pas"/>
         <DCCReference Include="DataAccess\DatabaseManager.pas"/>
         <DCCReference Include="Presenters\MainPresenter.pas"/>
-        <DCCReference Include="Presenters\StationDetailPresenter.pas"/>
         <DCCReference Include="Presenters\StationPresenter.pas"/>
-        <DCCReference Include="Presenters\WeatherEntryPresenter.pas"/>
         <DCCReference Include="View\Main.pas">
             <Form>FrmMain</Form>
-            <FormType>dfm</FormType>
-        </DCCReference>
-        <DCCReference Include="View\MoonDetails.pas">
-            <Form>MoonForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="View\SensorForm.pas">
             <Form>frmSensorForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="View\StationForm.pas">
+            <Form>frmStationForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="Presenters\StationDetailPresenter.pas"/>
         <DCCReference Include="View\StationDetailForm.pas">
             <Form>frmStationDetail</Form>
             <FormType>dfm</FormType>
         </DCCReference>
-        <DCCReference Include="View\StationForm.pas">
-            <Form>frmStationForm</Form>
+        <DCCReference Include="Business\WeatherEntryService.pas"/>
+        <DCCReference Include="Presenters\WeatherEntryPresenter.pas"/>
+        <DCCReference Include="View\WeatherEntryForm.pas">
+            <Form>frmWeatherEntry</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="View\MoonDetails.pas">
+            <Form>MoonForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="View\SunDetails.pas">
             <Form>SunForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
-        <DCCReference Include="View\WeatherEntryForm.pas">
-            <Form>frmWeatherEntry</Form>
-            <FormType>dfm</FormType>
-        </DCCReference>
+        <DCCReference Include="Business\Almanac.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

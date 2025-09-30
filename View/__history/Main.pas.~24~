@@ -409,7 +409,7 @@ implementation
 {$R *.dfm}
 
 uses
-  Math, StationForm, StationDetailForm, WeatherEntryForm, MoonDetails, SunDetails,
+  Math, StationForm, StationDetailForm, WeatherEntryForm,
   System.UITypes, DateUtils;
 
 { TFrmMain }
@@ -510,7 +510,6 @@ begin
   // Local data
   ClearStationCombo;
   FDisplayedStations.Free;
-  FDisplayedEntries.Free;
 
   // Presenter layer;
   FWeatherEntryPresenter.Free;
@@ -628,7 +627,7 @@ begin
     AdvGridWeatherData.Cells[8, I + 1] := Entry.Notes;
     
     AdvGridWeatherData.Objects[0, I + 1] := TObject(FDisplayedEntries.Count);
-    FDisplayedEntries.Add(Entry.clone);
+    FDisplayedEntries.Add(Entry);
   end;
   
   UpdateEntryActions;

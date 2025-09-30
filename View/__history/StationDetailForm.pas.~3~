@@ -110,7 +110,7 @@ implementation
 {$R *.dfm}
 
 uses
-  StationDetailPresenter, StationPresenter, StationForm, Math, System.UITypes, System.DateUtils;
+  StationDetailPresenter, StationForm, Math, System.UITypes, System.DateUtils;
 
 { TfrmStationDetail }
 
@@ -217,7 +217,7 @@ begin
     lblAltitudeValue.Caption := Format('%d m', [Station.Altitude])
   else
     lblAltitudeValue.Caption := 'Not specified';
-  memoDescription.Clear;
+    
   memoDescription.Text := Station.Description;
   
   // Maintenance dates
@@ -439,32 +439,16 @@ begin
   Canvas.Font.Style := [];
   Canvas.Font.Size := 8;
   Canvas.TextOut(X + 12, Y + 8, 
-    Format('%.4f, %.4f', [FCurrentStation.Coordinates.Latitude,
+    Format('%.4f, %.4f', [FCurrentStation.Coordinates.Latitude, 
                           FCurrentStation.Coordinates.Longitude]));
 end;
 
 { Event Handlers }
 
 procedure TfrmStationDetail.actEditExecute(Sender: TObject);
-var
-  StationForm: TfrmStationForm;
-  SelectedStation: TWeatherStation;
 begin
-  SelectedStation := FCurrentStation;
-
-  StationForm := TfrmStationForm.Create(Self);
-  try
-    StationForm.IsEditing := True;
-    StationForm.DatabaseManager := FDatabase;
-    StationForm.StationService := FStationService;
-    StationForm.EditStation := SelectedStation;
-
-    if StationForm.ShowModal = mrOk then
-      TStationDetailPresenter(FPresenter).Refresh;
-
-  finally
-    StationForm.Free;
-  end;
+  if Assigned(FPresenter) then
+    TStationDetailPresenter(FPresenter).EditStation;
 end;
 
 procedure TfrmStationDetail.actDeleteExecute(Sender: TObject);
@@ -475,7 +459,7 @@ end;
 
 procedure TfrmStationDetail.btnCloseClick(Sender: TObject);
 begin
-  ModalResult := mrOk;
+  Close;
 end;
 
 procedure TfrmStationDetail.pbLocationPaint(Sender: TObject);
