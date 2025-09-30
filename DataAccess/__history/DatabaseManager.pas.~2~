@@ -1,0 +1,1207 @@
+unit DatabaseManager;
+
+interface
+
+uses
+  System.SysUtils, System.Classes, System.Generics.Collections,
+  Data.DB, Data.Win.ADODB, FireDAC.Comp.Client, FireDAC.Stan.Def,
+  FireDAC.Stan.Async, FireDAC.DApt, FireDAC.Phys, FireDAC.Phys.SQLite,
+  FireDAC.Phys.SQLiteDef, FireDAC.Stan.ExprFuncs,
+  FireDAC.UI.Intf, FireDAC.VCLUI.Wait, FireDAC.Stan.Intf, FireDAC.Comp.uI,
+  
+  // Project units
+  WeatherTypes;
+
+type
+  TDatabaseManager = class
+  private
+    FConnection: TFDConnection;
+    FDatabasePath: string;
+    FInitialized: Boolean;
+    
+    procedure CreateTables;
+    function CreateQuery: TFDQuery;
+    function ConvertTimestampField(Query: TFDQuery; const FieldName: string): TDateTime;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    // Database management
+    function Initialize(const DatabasePath: string = ''): Boolean;
+    function IsConnected: Boolean;
+
+    // Gestion des stations
+    function GetAllStations: TWeatherStationList;
+    function GetStationName(const StationID: string): string;
+    function AddStation(const AStation: TWeatherStation): Boolean;
+    function UpdateStation(const AStation: TWeatherStation): Boolean;
+    function DeleteStation(const AID: string): Boolean;
+
+    // Filtres et recherche
+    function FilterStations(const ASearchText: string; AType: TStationType;
+                           AStatus: TStationStatus): TWeatherStationList;
+
+    // Gestion des capteurs
+    function AddSensorToStation(const AStationID: string; const ASensor: TSensor): Boolean;
+    function UpdateSensor(const AStationID: string; const ASensor: TSensor): Boolean;
+    function DeleteSensor(const AStationID, ASensorID: string): Boolean;
+    function GetStationSensors(const AstationID : string): TWeatherStationSensorList;
+
+    // Statistiques des Stations
+    function GetStationCount: Integer;
+    function GetStatusStationCount(const AStatus: TStationStatus): Integer;
+
+    // Utilitaires
+    function GenerateStationID: string;
+    function GenerateSensorID: string;
+
+    // Gestion des donnees Meteo
+    function GetAllWeatherEntries: TWeatherEntryList;
+    function GetWeatherEntry(const EntryID: string): TWeatherEntry;
+    function AddWeatherEntry(const Entry: TWeatherEntry): Boolean;
+    function UpdateWeatherEntry(const Entry: TWeatherEntry): Boolean;
+    function DeleteWeatherEntry(const EntryID: string): Boolean;
+
+    // Properties
+    property Initialized: Boolean read FInitialized;
+    property DatabasePath: string read FDatabasePath;
+    property Connection: TFDConnection read FConnection;
+  end;
+
+implementation
+
+uses
+  System.JSON, DateUtils, Math, StrUtils, IOUtils;
+
+const
+  DATABASE_VERSION = 1;
+  DEFAULT_DATABASE_NAME = 'weather_logger.db';
+
+{ TDatabaseManager }
+
+constructor TDatabaseManager.Create;
+begin
+  inherited Create;
+  FInitialized := False;
+  FConnection := TFDConnection.Create(nil);
+end;
+
+destructor TDatabaseManager.Destroy;
+begin
+  if FConnection.Connected then
+    FConnection.Connected := False;
+  FConnection.Free;
+  inherited Destroy;
+end;
+
+function TDatabaseManager.CreateQuery: TFDQuery;
+begin
+  Result := TFDQuery.Create(nil);
+  Result.Connection := FConnection;
+end;
+
+function TDatabaseManager.ConvertTimestampField(Query: TFDQuery; const FieldName: string): TDateTime;
+var
+  TimestampStr: string;
+begin
+  if Query.FieldByName(FieldName).IsNull then
+  begin
+    Result := Now;
+    Exit;
+  end;
+
+  TimestampStr := Query.FieldByName(FieldName).AsString;
+
+  // Essayer la conversion
+  if not TryStrToDateTime(TimestampStr, Result) then
+  begin
+    // Format alternatif : essayer ISO8601
+    try
+      Result := ISO8601ToDate(TimestampStr);
+    except
+      Result := Now; // Valeur par défaut
+    end;
+  end;
+end;
+
+function TDatabaseManager.Initialize(const DatabasePath: string = ''): Boolean;
+begin
+  Result := False;
+  
+  try
+    // Set database path
+    if DatabasePath <> '' then
+      FDatabasePath := DatabasePath
+    else
+      FDatabasePath := ExtractFilePath(ParamStr(0)) + DEFAULT_DATABASE_NAME;
+    
+    // Configure connection parameters
+    FConnection.Params.Clear;
+    FConnection.Params.Add('Database=' + FDatabasePath);
+    FConnection.Params.Add('LockingMode=Normal');
+    FConnection.Params.Add('OpenMode=CreateUTF8');
+    FConnection.Params.DriverID:='SQlite';
+    
+    // Connect to database
+    FConnection.Connected := True;
+    
+    // Create tables if they don't exist
+    CreateTables;
+    
+    FInitialized := True;
+    Result := True;
+    
+  except
+    on E: Exception do
+    begin
+      FInitialized := False;
+      raise Exception.Create('Failed to initialize database: ' + E.Message);
+    end;
+  end;
+end;
+
+function TDatabaseManager.IsConnected: Boolean;
+begin
+  Result := FConnection.Connected and FInitialized;
+end;
+
+procedure TDatabaseManager.CreateTables;
+var
+  TableQuery: TFDQuery;
+begin
+  TableQuery := CreateQuery;
+  // Create weather_stations table
+  TableQuery.SQL.Text :=
+    'CREATE TABLE IF NOT EXISTS Stations (' +
+    '  ID TEXT PRIMARY KEY, ' +
+    '  Name TEXT NOT NULL, ' +
+    '  Latitude REAL NOT NULL, ' +
+    '  Longitude REAL NOT NULL, ' +
+    '  StationType INTEGER NOT NULL, ' +
+    '  Status INTEGER NOT NULL, ' +
+    '  Address TEXT, ' +
+    '  Description TEXT, ' +
+    '  Photo TEXT, ' +
+    '  InstallationDate DATE, ' +
+    '  LastMaintenance DATE, ' +
+    '  NextMaintenance DATE, ' +
+    '  Altitude INTEGER, ' +
+    '  CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP, ' +
+    '  UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP' +
+    ')';
+  TableQuery.ExecSQL;
+
+  // Table des capteurs
+  TableQuery.SQL.Text :=
+    'CREATE TABLE IF NOT EXISTS Sensors (' +
+    '  ID TEXT PRIMARY KEY, ' +
+    '  StationID TEXT NOT NULL, ' +
+    '  Name TEXT NOT NULL, ' +
+    '  SerialNumber TEXT, ' +
+    '  SensorType INTEGER NOT NULL, ' +
+    '  Unit TEXT NOT NULL, ' +
+    '  IsActive BOOLEAN NOT NULL, ' +
+    '  LastCalibration DATE, ' +
+    '  Accuracy REAL, ' +
+    '  CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP, ' +
+    '  FOREIGN KEY (StationID) REFERENCES Stations(ID) ON DELETE CASCADE' +
+    ')';
+  TableQuery.ExecSQL;
+
+  // Create weather_entries table
+  TableQuery.SQL.Text := '''
+    CREATE TABLE IF NOT EXISTS weather_entries (
+      id TEXT PRIMARY KEY,
+      station_id TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      temperature REAL NOT NULL,
+      humidity REAL NOT NULL,
+      pressure REAL NOT NULL,
+      wind_speed REAL NOT NULL,
+      wind_gust REAL NOT NULL DEFAULT 0,
+      wind_direction TEXT NOT NULL,
+      conditions TEXT NOT NULL,
+      precipitations REAL NOT NULL DEFAULT 0,
+      snow REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      photo TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (station_id) REFERENCES Stations(ID)
+    )
+  ''';
+  TableQuery.ExecSQL;
+  
+  // Create settings table
+  TableQuery.SQL.Text := '''
+    CREATE TABLE IF NOT EXISTS settings (
+      keyname TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+  TableQuery.ExecSQL;
+
+  // Create database_info table
+  TableQuery.SQL.Text := '''
+    CREATE TABLE IF NOT EXISTS database_info (
+      keyname TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  ''';
+  TableQuery.ExecSQL;
+
+  // Index pour les performances
+  TableQuery.SQL.Text := 'CREATE INDEX IF NOT EXISTS idx_stations_status ON Stations(Status)';
+  TableQuery.ExecSQL;
+
+  TableQuery.SQL.Text := 'CREATE INDEX IF NOT EXISTS idx_sensors_station ON Sensors(StationID)';
+  TableQuery.ExecSQL;
+end;
+
+function TDatabaseManager.GenerateStationID: string;
+begin
+  Result := 'STATION_' + FormatDateTime('yyyymmddhhnnsszzz', Now);
+end;
+
+function TDatabaseManager.GenerateSensorID: string;
+begin
+  Result := 'SENSOR_' + FormatDateTime('yyyymmddhhnnsszzz', Now);
+end;
+
+function TDatabaseManager.FilterStations(const ASearchText: string; AType: TStationType;
+  AStatus: TStationStatus): TWeatherStationList;
+var
+  Station, NewStation: TWeatherStation;
+  AllStations: TWeatherStationList;
+  MatchesSearch, MatchesType, MatchesStatus: Boolean;
+  I: Integer;
+  Sensor: TSensor;
+begin
+  Result := TWeatherStationList.Create;
+  AllStations := nil;
+  try
+    AllStations := GetAllStations;
+    try
+      for Station in AllStations do
+      begin
+        // Recherche textuelle
+        MatchesSearch := ASearchText.IsEmpty or
+                    Station.Name.ToLower.Contains(ASearchText.ToLower) or
+                    Station.Address.ToLower.Contains(ASearchText.ToLower);
+
+        // Filtre par type (si différent de -1, qui signifie "tous")
+        MatchesType := (Ord(AType) = -1) or (Station.StationType = AType);
+
+        // Filtre par statut (si différent de -1, qui signifie "tous")
+        MatchesStatus := (Ord(AStatus) = -1) or (Station.Status = AStatus);
+
+        if MatchesSearch and MatchesType and MatchesStatus then
+          begin
+            Result.Add(Station.Clone);
+          end;
+      end;
+    finally
+      AllStations.Free;
+    end;
+  except
+    // En cas d'erreur, libérer Result pour éviter les fuites
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TDatabaseManager.GetAllStations: TWeatherStationList;
+var
+  Station: TWeatherStation;
+  Sensor: TSensor;
+  StationQuery: TFDQuery;
+  SensorQuery: TFDQuery;
+begin
+  Result := TWeatherStationList.Create;
+  StationQuery := CreateQuery;
+  SensorQuery := CreateQuery;
+
+  try
+    try
+      // Chargement des stations
+      StationQuery.SQL.Text := 'SELECT * FROM Stations ORDER BY Name';
+      StationQuery.Open;
+      try
+        while not StationQuery.Eof do
+        begin
+          Station := TWeatherStation.Create(
+            StationQuery.FieldByName('ID').AsString,
+            StationQuery.FieldByName('Name').AsString,
+            StationQuery.FieldByName('Address').AsString,
+            StationQuery.FieldByName('Description').AsString,
+            StationQuery.FieldByName('Photo').AsString,
+            TCoordinates.Create(
+              StationQuery.FieldByName('Latitude').AsFloat,
+              StationQuery.FieldByName('Longitude').AsFloat
+            ),
+            TStationType(StationQuery.FieldByName('StationType').AsInteger),
+            TStationStatus(StationQuery.FieldByName('Status').AsInteger),
+            StationQuery.FieldByName('InstallationDate').AsDateTime,
+            StationQuery.FieldByName('LastMaintenance').AsDateTime,
+            StationQuery.FieldByName('NextMaintenance').AsDateTime,
+            StationQuery.FieldByName('Altitude').AsInteger
+          );
+
+          try
+            // Chargement des capteurs pour cette station
+            SensorQuery.SQL.Text := 'SELECT * FROM Sensors WHERE StationID = :StationID ORDER BY Name';
+            SensorQuery.ParamByName('StationID').AsString := Station.ID;
+            SensorQuery.Open;
+            try
+              while not SensorQuery.Eof do
+              begin
+                Sensor := TSensor.Create(
+                  SensorQuery.FieldByName('ID').AsString,
+                  SensorQuery.FieldByName('Name').AsString,
+                  SensorQuery.FieldByName('Unit').AsString,
+                  SensorQuery.FieldByName('SerialNumber').AsString,
+                  TSensorType(SensorQuery.FieldByName('SensorType').AsInteger),
+                  SensorQuery.FieldByName('IsActive').AsBoolean,
+                  SensorQuery.FieldByName('LastCalibration').AsDateTime,
+                  SensorQuery.FieldByName('Accuracy').AsFloat
+                );
+                Station.Sensors.Add(Sensor);
+                SensorQuery.Next;
+              end;
+            finally
+              SensorQuery.Close;
+            end;
+
+            Result.Add(Station);
+          except
+            Station.Free;
+            raise;
+          end;
+          StationQuery.Next;
+        end;
+      finally
+        StationQuery.Close;
+      end;
+    except
+      FreeAndNil(Result);
+      raise;
+    end;
+  finally
+    SensorQuery.Free;
+    StationQuery.Free;
+  end;
+end;
+
+function TDatabaseManager.GetStationName(const StationID: string): string;
+var
+  Query: TFDQuery;
+begin
+  Result := 'Unknown Station';
+  Query := CreateQuery;
+  try
+    Query.SQL.Text := 'SELECT Name FROM Stations WHERE ID = :ID';
+    Query.ParamByName('ID').AsString := StationID;
+    Query.Open;
+    try
+      if not Query.Eof then
+        Result := Query.FieldByName('Name').AsString;
+    finally
+      Query.Close;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.AddStation(const AStation: TWeatherStation): Boolean;
+var
+  Sensor: TSensor;
+  StationQuery: TFDQuery;
+  SensorQuery: TFDQuery;
+begin
+  Result := False;
+
+  if not Assigned(AStation) then
+    raise Exception.Create('Station non assignée');
+
+  if AStation.ID.IsEmpty then
+    raise Exception.Create('ID de station invalide');
+
+  StationQuery := CreateQuery;
+  SensorQuery := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      // Vérifier si la station existe déjà
+      StationQuery.SQL.Text := 'SELECT COUNT(*) as cnt FROM Stations WHERE ID = :ID';
+      StationQuery.ParamByName('ID').AsString := AStation.ID;
+      StationQuery.Open;
+      try
+        if StationQuery.FieldByName('cnt').AsInteger > 0 then
+          raise Exception.Create('Une station avec cet ID existe déjà');
+      finally
+        StationQuery.Close;
+      end;
+
+      // Insertion de la station
+      StationQuery.SQL.Text :=
+        'INSERT INTO Stations (ID, Name, Latitude, Longitude, StationType, Status, ' +
+        'Address, Description, Photo, InstallationDate, LastMaintenance, NextMaintenance, Altitude) ' +
+        'VALUES (:ID, :Name, :Latitude, :Longitude, :StationType, :Status, ' +
+        ':Address, :Description, :Photo, :InstallationDate, :LastMaintenance, :NextMaintenance, :Altitude)';
+
+      StationQuery.ParamByName('ID').AsString := AStation.ID;
+      StationQuery.ParamByName('Name').AsString := AStation.Name;
+      StationQuery.ParamByName('Latitude').AsFloat := AStation.Coordinates.Latitude;
+      StationQuery.ParamByName('Longitude').AsFloat := AStation.Coordinates.Longitude;
+      StationQuery.ParamByName('StationType').AsInteger := Ord(AStation.StationType);
+      StationQuery.ParamByName('Status').AsInteger := Ord(AStation.Status);
+      StationQuery.ParamByName('Address').AsString := AStation.Address;
+      StationQuery.ParamByName('Description').AsString := AStation.Description;
+      StationQuery.ParamByName('Photo').AsString := AStation.Photo;
+
+      // Gestion des dates (vérifier si valides)
+      if AStation.InstallationDate > 0 then
+        StationQuery.ParamByName('InstallationDate').AsDateTime := AStation.InstallationDate
+      else
+      begin
+        StationQuery.ParamByName('InstallationDate').DataType := ftDateTime;
+        StationQuery.ParamByName('InstallationDate').Clear;
+      end;
+
+      if AStation.LastMaintenance > 0 then
+        StationQuery.ParamByName('LastMaintenance').AsDateTime := AStation.LastMaintenance
+      else
+      begin
+        StationQuery.ParamByName('LastMaintenance').DataType := ftDateTime;
+        StationQuery.ParamByName('LastMaintenance').Clear;
+      end;
+
+      if AStation.NextMaintenance > 0 then
+        StationQuery.ParamByName('NextMaintenance').AsDateTime := AStation.NextMaintenance
+      else
+      begin
+        StationQuery.ParamByName('NextMaintenance').DataType := ftDateTime;
+        StationQuery.ParamByName('NextMaintenance').Clear;
+      end;
+
+      StationQuery.ParamByName('Altitude').AsInteger := AStation.Altitude;
+      StationQuery.ExecSQL;
+
+      // Insertion des capteurs (dans la même transaction)
+      if Assigned(AStation.Sensors) and (AStation.Sensors.Count > 0) then
+      begin
+        SensorQuery.SQL.Text :=
+          'INSERT INTO Sensors (ID, StationID, Name, SerialNumber, SensorType, Unit, ' +
+          'IsActive, LastCalibration, Accuracy) ' +  // ? Retiré InstallationDate et LastMaintenance
+          'VALUES (:ID, :StationID, :Name, :SerialNumber, :SensorType, :Unit, ' +
+          ':IsActive, :LastCalibration, :Accuracy)';
+
+        for Sensor in AStation.Sensors do
+        begin
+          SensorQuery.ParamByName('ID').AsString := Sensor.ID;
+          SensorQuery.ParamByName('StationID').AsString := AStation.ID;
+          SensorQuery.ParamByName('Name').AsString := Sensor.Name;
+          SensorQuery.ParamByName('SerialNumber').AsString := Sensor.SerialNumber;
+          SensorQuery.ParamByName('SensorType').AsInteger := Ord(Sensor.SensorType);
+          SensorQuery.ParamByName('Unit').AsString := Sensor.&Unit;
+          SensorQuery.ParamByName('IsActive').AsBoolean := Sensor.IsActive;
+
+          if Sensor.LastCalibration > 0 then
+            SensorQuery.ParamByName('LastCalibration').AsDateTime := Sensor.LastCalibration
+          else
+          begin
+            SensorQuery.ParamByName('LastCalibration').DataType := ftDateTime;
+            SensorQuery.ParamByName('LastCalibration').Clear;
+          end;
+
+          SensorQuery.ParamByName('Accuracy').AsFloat := Sensor.Accuracy;
+          SensorQuery.ExecSQL;
+        end;
+      end;
+
+      FConnection.Commit;
+      Result := True;
+
+    except
+      on E: Exception do
+      begin
+        if FConnection.InTransaction then
+          FConnection.Rollback;
+        raise Exception.Create('Erreur lors de l''ajout de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    SensorQuery.Free;
+    StationQuery.Free;
+  end;
+end;
+
+function TDatabaseManager.UpdateStation(const AStation: TWeatherStation): Boolean;
+var
+  Sensor: TSensor;
+  StationQuery: TFDQuery;
+  SensorQuery: TFDQuery;
+  CheckQuery: TFDQuery;
+  ExistingSensorIDs: TStringList;
+  CurrentSensorIDs: TStringList;
+  SensorID: string;
+  I: Integer;
+begin
+  Result := False;
+
+  if not Assigned(AStation) or AStation.ID.IsEmpty then
+    raise Exception.Create('Station invalide');
+
+  StationQuery := CreateQuery;
+  SensorQuery := CreateQuery;
+  CheckQuery := CreateQuery;
+  ExistingSensorIDs := TStringList.Create;
+  CurrentSensorIDs := TStringList.Create;
+
+  try
+    FConnection.StartTransaction;
+    try
+      // Vérifier que la station existe
+      CheckQuery.SQL.Text := 'SELECT COUNT(*) as cnt FROM Stations WHERE ID = :ID';
+      CheckQuery.ParamByName('ID').AsString := AStation.ID;
+      CheckQuery.Open;
+      try
+        if CheckQuery.FieldByName('cnt').AsInteger = 0 then
+          raise Exception.Create('Station non trouvée');
+      finally
+        CheckQuery.Close;
+      end;
+
+      // Mise à jour de la station
+      StationQuery.SQL.Text :=
+        'UPDATE Stations SET Name = :Name, Latitude = :Latitude, Longitude = :Longitude, ' +
+        'StationType = :StationType, Status = :Status, Address = :Address, ' +
+        'Description = :Description, Photo = :Photo, InstallationDate = :InstallationDate, ' +
+        'LastMaintenance = :LastMaintenance, NextMaintenance = :NextMaintenance, ' +
+        'Altitude = :Altitude WHERE ID = :ID';
+
+      StationQuery.ParamByName('ID').AsString := AStation.ID;
+      StationQuery.ParamByName('Name').AsString := AStation.Name;
+      StationQuery.ParamByName('Latitude').AsFloat := AStation.Coordinates.Latitude;
+      StationQuery.ParamByName('Longitude').AsFloat := AStation.Coordinates.Longitude;
+      StationQuery.ParamByName('StationType').AsInteger := Ord(AStation.StationType);
+      StationQuery.ParamByName('Status').AsInteger := Ord(AStation.Status);
+      StationQuery.ParamByName('Address').AsString := AStation.Address;
+      StationQuery.ParamByName('Description').AsString := AStation.Description;
+      StationQuery.ParamByName('Photo').AsString := AStation.Photo;
+
+      // Gestion des dates NULL
+      if AStation.InstallationDate > 0 then
+        StationQuery.ParamByName('InstallationDate').AsDateTime := AStation.InstallationDate
+      else
+      begin
+        StationQuery.ParamByName('InstallationDate').DataType := ftDateTime;
+        StationQuery.ParamByName('InstallationDate').Clear;
+      end;
+
+      if AStation.LastMaintenance > 0 then
+        StationQuery.ParamByName('LastMaintenance').AsDateTime := AStation.LastMaintenance
+      else
+      begin
+        StationQuery.ParamByName('LastMaintenance').DataType := ftDateTime;
+        StationQuery.ParamByName('LastMaintenance').Clear;
+      end;
+
+      if AStation.NextMaintenance > 0 then
+        StationQuery.ParamByName('NextMaintenance').AsDateTime := AStation.NextMaintenance
+      else
+      begin
+        StationQuery.ParamByName('NextMaintenance').DataType := ftDateTime;
+        StationQuery.ParamByName('NextMaintenance').Clear;
+      end;
+
+      StationQuery.ParamByName('Altitude').AsInteger := AStation.Altitude;
+      StationQuery.ExecSQL;
+
+      // Vérifier que la mise à jour a fonctionné
+      if StationQuery.RowsAffected = 0 then
+        raise Exception.Create('Aucune ligne mise à jour');
+
+      // Récupérer les IDs des capteurs existants en base
+      CheckQuery.SQL.Text := 'SELECT ID FROM Sensors WHERE StationID = :StationID';
+      CheckQuery.ParamByName('StationID').AsString := AStation.ID;
+      CheckQuery.Open;
+      try
+        while not CheckQuery.Eof do
+        begin
+          ExistingSensorIDs.Add(CheckQuery.FieldByName('ID').AsString);
+          CheckQuery.Next;
+        end;
+      finally
+        CheckQuery.Close;
+      end;
+
+      // Construire la liste des IDs actuels
+      for Sensor in AStation.Sensors do
+        CurrentSensorIDs.Add(Sensor.ID);
+
+      // Supprimer les capteurs qui ne sont plus présents
+      for I := 0 to ExistingSensorIDs.Count - 1 do
+      begin
+        SensorID := ExistingSensorIDs[I];
+        if CurrentSensorIDs.IndexOf(SensorID) = -1 then
+        begin
+          SensorQuery.SQL.Text := 'DELETE FROM Sensors WHERE ID = :ID';
+          SensorQuery.ParamByName('ID').AsString := SensorID;
+          SensorQuery.ExecSQL;
+        end;
+      end;
+
+      // Ajouter ou mettre à jour les capteurs
+      for Sensor in AStation.Sensors do
+      begin
+        if ExistingSensorIDs.IndexOf(Sensor.ID) >= 0 then
+        begin
+          // Mise à jour du capteur existant
+          SensorQuery.SQL.Text :=
+            'UPDATE Sensors SET Name = :Name, SerialNumber = :SerialNumber, ' +
+            'SensorType = :SensorType, Unit = :Unit, IsActive = :IsActive, ' +
+            'LastCalibration = :LastCalibration, Accuracy = :Accuracy ' +
+            'WHERE ID = :ID';
+        end
+        else
+        begin
+          // Insertion d'un nouveau capteur
+          SensorQuery.SQL.Text :=
+            'INSERT INTO Sensors (ID, StationID, Name, SerialNumber, SensorType, Unit, ' +
+            'IsActive, LastCalibration, Accuracy) ' +
+            'VALUES (:ID, :StationID, :Name, :SerialNumber, :SensorType, :Unit, ' +
+            ':IsActive, :LastCalibration, :Accuracy)';
+          SensorQuery.ParamByName('StationID').AsString := AStation.ID;
+        end;
+
+        SensorQuery.ParamByName('ID').AsString := Sensor.ID;
+        SensorQuery.ParamByName('Name').AsString := Sensor.Name;
+        SensorQuery.ParamByName('SerialNumber').AsString := Sensor.SerialNumber;
+        SensorQuery.ParamByName('SensorType').AsInteger := Ord(Sensor.SensorType);
+        SensorQuery.ParamByName('Unit').AsString := Sensor.&Unit;
+        SensorQuery.ParamByName('IsActive').AsBoolean := Sensor.IsActive;
+
+        if Sensor.LastCalibration > 0 then
+          SensorQuery.ParamByName('LastCalibration').AsDateTime := Sensor.LastCalibration
+        else
+        begin
+          SensorQuery.ParamByName('LastCalibration').DataType := ftDateTime;
+          SensorQuery.ParamByName('LastCalibration').Clear;
+        end;
+
+        SensorQuery.ParamByName('Accuracy').AsFloat := Sensor.Accuracy;
+        SensorQuery.ExecSQL;
+      end;
+
+      FConnection.Commit;
+      Result := True;
+
+    except
+      on E: Exception do
+      begin
+        if FConnection.InTransaction then
+          FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    CurrentSensorIDs.Free;
+    ExistingSensorIDs.Free;
+    CheckQuery.Free;
+    SensorQuery.Free;
+    StationQuery.Free;
+  end;
+end;
+
+function TDatabaseManager.DeleteStation(const AID: string): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      // Suppression de la station (cascade automatique pour les capteurs)
+      Query.SQL.Text := 'DELETE FROM Stations WHERE ID = :ID';
+      Query.ParamByName('ID').AsString := AID;
+      Query.ExecSQL;
+
+      FConnection.Commit;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+
+function TDatabaseManager.AddSensorToStation(const AStationID: string; const ASensor: TSensor): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      Query.SQL.Text :=
+        'INSERT INTO Sensors (ID, StationID, Name, SerialNumber, SensorType, Unit, IsActive, LastCalibration, Accuracy) ' +
+        'VALUES (:ID, :StationID, :Name, :SerialNumber, :SensorType, :Unit, :IsActive, :LastCalibration, :Accuracy)';
+
+      Query.ParamByName('ID').AsString := ASensor.ID;
+      Query.ParamByName('StationID').AsString := AStationID;
+      Query.ParamByName('Name').AsString := ASensor.Name;
+      Query.ParamByName('SerialNumber').AsString := ASensor.SerialNumber;
+      Query.ParamByName('SensorType').AsInteger := Ord(ASensor.SensorType);
+      Query.ParamByName('Unit').AsString := ASensor.&Unit;
+      Query.ParamByName('IsActive').AsBoolean := ASensor.IsActive;
+
+      if ASensor.LastCalibration > 0 then
+        Query.ParamByName('LastCalibration').AsDateTime := ASensor.LastCalibration
+      else
+      begin
+        Query.ParamByName('LastCalibration').DataType := ftDateTime;
+        Query.ParamByName('LastCalibration').Clear;
+      end;
+
+      Query.ParamByName('Accuracy').AsFloat := ASensor.Accuracy;
+      Query.ExecSQL;
+
+      FConnection.Commit;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        if FConnection.InTransaction then
+          FConnection.Rollback;
+        raise Exception.Create('Erreur lors de l''ajout du capteur: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.UpdateSensor(const AStationID: string; const ASensor: TSensor): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      Query.SQL.Text :=
+        'UPDATE Sensors SET Name = :Name, SerialNumber = :SerialNumber, SensorType = :SensorType, Unit = :Unit, ' +
+        'IsActive = :IsActive, LastCalibration = :LastCalibration, Accuracy = :Accuracy ' +
+        'WHERE ID = :ID AND StationID = :StationID';
+
+      Query.ParamByName('ID').AsString := ASensor.ID;
+      Query.ParamByName('StationID').AsString := AStationID;
+      Query.ParamByName('Name').AsString := ASensor.Name;
+      Query.ParamByName('SerialNumber').AsString := ASensor.SerialNumber;
+      Query.ParamByName('SensorType').AsInteger := Ord(ASensor.SensorType);
+      Query.ParamByName('Unit').AsString := ASensor.&Unit;
+      Query.ParamByName('IsActive').AsBoolean := ASensor.IsActive;
+
+      if ASensor.LastCalibration > 0 then
+        Query.ParamByName('LastCalibration').AsDateTime := ASensor.LastCalibration
+      else
+      begin
+        Query.ParamByName('LastCalibration').DataType := ftDateTime;
+        Query.ParamByName('LastCalibration').Clear;
+      end;
+
+      Query.ParamByName('Accuracy').AsFloat := ASensor.Accuracy;
+      Query.ExecSQL;
+
+      FConnection.Commit;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        if FConnection.InTransaction then
+          FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour du capteur: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.DeleteSensor(const AStationID, ASensorID: string): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      Query.SQL.Text := 'DELETE FROM Sensors WHERE ID = :ID AND StationID = :StationID';
+      Query.ParamByName('ID').AsString := ASensorID;
+      Query.ParamByName('StationID').AsString := AStationID;
+      Query.ExecSQL;
+
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.GetStationCount: Integer;
+var
+  StationList: TWeatherStationList;
+begin
+  Result := 0;
+  StationList := GetAllStations;
+  try
+    Result := StationList.Count;
+  finally
+    StationList.Free;  // Libération correcte
+  end;
+end;
+
+function TDatabaseManager.GetStatusStationCount(const AStatus:TStationStatus): Integer;
+var
+  Station: TWeatherStation;
+  StationList: TWeatherStationList;
+begin
+  Result := 0;
+  StationList := GetAllStations;
+  try
+    for Station in StationList do
+    begin
+      if Station.Status = AStatus then
+        Inc(Result);
+    end;
+  finally
+    StationList.Free;
+  end;
+end;
+
+function TDatabaseManager.GetStationSensors(const AStationID: string): TWeatherStationSensorList;
+var
+  Query: TFDQuery;
+  Sensor: TSensor;
+begin
+  if AStationID.IsEmpty then
+    raise Exception.Create('StationID invalide');
+
+  Result := TWeatherStationSensorList.Create;
+  Query := CreateQuery;
+
+  try
+    try
+      Query.SQL.Text := 'SELECT * FROM Sensors WHERE StationID = :StationID ORDER BY Name';
+      Query.ParamByName('StationID').AsString := AStationID;
+      Query.Open;
+      try
+        while not Query.Eof do
+        begin
+          Sensor := nil;
+          try
+            Sensor := TSensor.Create(
+              Query.FieldByName('ID').AsString,
+              Query.FieldByName('Name').AsString,
+              Query.FieldByName('Unit').AsString,
+              Query.FieldByName('SerialNumber').AsString,
+              TSensorType(Query.FieldByName('SensorType').AsInteger),
+              Query.FieldByName('IsActive').AsBoolean,
+              Query.FieldByName('LastCalibration').AsDateTime,
+              Query.FieldByName('Accuracy').AsFloat
+            );
+            Result.Add(Sensor);
+            Sensor := nil; // Transfert de propriété à la liste
+          except
+            Sensor.Free; // Libérer seulement si pas ajouté à la liste
+            raise;
+          end;
+          Query.Next;
+        end;
+      finally
+        Query.Close;
+      end;
+    except
+      FreeAndNil(Result);
+      raise;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.AddWeatherEntry(const Entry: TWeatherEntry): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+
+      Query.SQL.Text := '''
+        INSERT INTO weather_entries (
+          id, station_id, timestamp, temperature, humidity, pressure,
+          wind_speed, wind_gust, wind_direction, conditions, notes,
+          created_at, updated_at
+        ) VALUES (
+          :id, :station_id, :timestamp, :temperature, :humidity, :pressure,
+          :wind_speed, :wind_gust, :wind_direction, :conditions, :notes,
+          :created_at, :updated_at
+        )
+      ''';
+
+      Query.ParamByName('id').AsString := Entry.ID;
+      Query.ParamByName('station_id').AsString := Entry.StationID;
+      Query.ParamByName('timestamp').AsString := DateTimeToStr(Entry.Timestamp);
+      Query.ParamByName('temperature').AsFloat := Entry.Temperature;
+      Query.ParamByName('humidity').AsFloat := Entry.Humidity;
+      Query.ParamByName('pressure').AsFloat := Entry.Pressure;
+      Query.ParamByName('wind_speed').AsFloat := Entry.WindSpeed;
+      Query.ParamByName('wind_gust').AsFloat := Entry.WindGust;
+      Query.ParamByName('wind_direction').AsString := Entry.WindDirection;
+      Query.ParamByName('conditions').AsString := Entry.Conditions;
+      Query.ParamByName('notes').AsString := Entry.Notes;
+      Query.ParamByName('created_at').AsString := DateTimeToStr(Entry.CreatedAt);
+      Query.ParamByName('updated_at').AsString := DateTimeToStr(Entry.UpdatedAt);
+
+      Query.ExecSQL;
+      Result := True;
+
+      FConnection.Commit;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.UpdateWeatherEntry(const Entry: TWeatherEntry): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+
+      Query.SQL.Text := '''
+        UPDATE weather_entries SET
+          station_id = :station_id,
+          timestamp = :timestamp,
+          temperature = :temperature,
+          humidity = :humidity,
+          pressure = :pressure,
+          wind_speed = :wind_speed,
+          wind_gust = :wind_gust,
+          wind_direction = :wind_direction,
+          conditions = :conditions,
+          notes = :notes,
+          updated_at = :updated_at
+        WHERE id = :id
+      ''';
+
+      Query.ParamByName('id').AsString := Entry.ID;
+      Query.ParamByName('station_id').AsString := Entry.StationID;
+      Query.ParamByName('timestamp').AsString := DateTimeToStr(Entry.Timestamp);
+      Query.ParamByName('temperature').AsFloat := Entry.Temperature;
+      Query.ParamByName('humidity').AsFloat := Entry.Humidity;
+      Query.ParamByName('pressure').AsFloat := Entry.Pressure;
+      Query.ParamByName('wind_speed').AsFloat := Entry.WindSpeed;
+      Query.ParamByName('wind_gust').AsFloat := Entry.WindGust;
+      Query.ParamByName('wind_direction').AsString := Entry.WindDirection;
+      Query.ParamByName('conditions').AsString := Entry.Conditions;
+      Query.ParamByName('notes').AsString := Entry.Notes;
+      Query.ParamByName('updated_at').AsString := DateTimeToStr(Now);
+
+      Query.ExecSQL;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.DeleteWeatherEntry(const EntryID: string): Boolean;
+var
+  Query: TFDQuery;
+begin
+  Result := False;
+  Query := CreateQuery;
+  try
+    FConnection.StartTransaction;
+    try
+      Query.SQL.Text := 'DELETE FROM weather_entries WHERE id = :id';
+      Query.ParamByName('id').AsString := EntryID;
+      Query.ExecSQL;
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        FConnection.Rollback;
+        raise Exception.Create('Erreur lors de la mise à jour de la station: ' + E.Message);
+      end;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.GetWeatherEntry(const EntryID: string): TWeatherEntry;
+var
+  Query: TFDQuery;
+  TimestampValue, CreatedAtValue, UpdatedAtValue: TDateTime;
+begin
+  Result := nil;
+
+  if EntryID.IsEmpty then
+    raise Exception.Create('EntryID invalide');
+
+  Query := CreateQuery;
+  try
+    Query.SQL.Text := 'SELECT * FROM weather_entries WHERE id = :id';
+    Query.ParamByName('id').AsString := EntryID;
+    Query.Open;
+    try
+      if not Query.Eof then
+      begin
+        // Conversion sécurisée des timestamps
+        TimestampValue := ConvertTimestampField(Query, 'timestamp');
+        CreatedAtValue := ConvertTimestampField(Query, 'created_at');
+        UpdatedAtValue := ConvertTimestampField(Query, 'updated_at');
+
+        Result := TWeatherEntry.Create(
+          Query.FieldByName('station_id').AsString,
+          Query.FieldByName('temperature').AsFloat,
+          Query.FieldByName('humidity').AsFloat,
+          Query.FieldByName('pressure').AsFloat,
+          Query.FieldByName('wind_speed').AsFloat,
+          Query.FieldByName('precipitations').AsFloat,
+          Query.FieldByName('snow').AsFloat,
+          Query.FieldByName('wind_direction').AsString,
+          Query.FieldByName('conditions').AsString,
+          Query.FieldByName('notes').AsString
+        );
+
+        // Assigner les valeurs supplémentaires
+        Result.ID := Query.FieldByName('id').AsString;
+        Result.Timestamp := TimestampValue;
+        Result.WindGust := Query.FieldByName('wind_gust').AsFloat;
+        Result.CreatedAt := CreatedAtValue;
+        Result.UpdatedAt := UpdatedAtValue;
+      end;
+    finally
+      Query.Close;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+function TDatabaseManager.GetAllWeatherEntries: TWeatherEntryList;
+var
+  Entry: TWeatherEntry;
+  Query: TFDQuery;
+  TimestampStr, CreatedAtStr, UpdatedAtStr: string;
+  TimestampValue, CreatedAtValue, UpdatedAtValue: TDateTime;
+begin
+  Result := TWeatherEntryList.Create;
+  Query := CreateQuery;
+
+  try
+    try
+      Query.SQL.Text := 'SELECT * FROM weather_entries ORDER BY timestamp DESC';
+      Query.Open;
+      try
+        while not Query.Eof do
+        begin
+          Entry := nil;
+          try
+            // Conversions sécurisées
+            TimestampStr := Query.FieldByName('timestamp').AsString;
+            if not TryStrToDateTime(TimestampStr, TimestampValue) then
+              TimestampValue := Now;
+
+            CreatedAtStr := Query.FieldByName('created_at').AsString;
+            if not TryStrToDateTime(CreatedAtStr, CreatedAtValue) then
+              CreatedAtValue := Now;
+
+            UpdatedAtStr := Query.FieldByName('updated_at').AsString;
+            if not TryStrToDateTime(UpdatedAtStr, UpdatedAtValue) then
+              UpdatedAtValue := Now;
+
+            Entry := TWeatherEntry.Create(
+              Query.FieldByName('station_id').AsString,
+              Query.FieldByName('temperature').AsFloat,
+              Query.FieldByName('humidity').AsFloat,
+              Query.FieldByName('pressure').AsFloat,
+              Query.FieldByName('wind_speed').AsFloat,
+              Query.FieldByName('precipitations').AsFloat,
+              Query.FieldByName('snow').AsFloat,
+              Query.FieldByName('wind_direction').AsString,
+              Query.FieldByName('conditions').AsString,
+              Query.FieldByName('notes').AsString
+            );
+
+            Entry.ID := Query.FieldByName('id').AsString;
+            Entry.Timestamp := TimestampValue;
+            Entry.WindGust := Query.FieldByName('wind_gust').AsFloat;
+            Entry.CreatedAt := CreatedAtValue;
+            Entry.UpdatedAt := UpdatedAtValue;
+
+            Result.Add(Entry);
+            Entry := nil; // Transfert de propriété à la liste
+          except
+            Entry.Free; // Libérer seulement si pas ajouté
+            raise;
+          end;
+
+          Query.Next;
+        end;
+      finally
+        Query.Close;
+      end;
+    except
+      FreeAndNil(Result);
+      raise;
+    end;
+  finally
+    Query.Free;
+  end;
+end;
+
+end.

@@ -1,0 +1,192 @@
+﻿unit StationDetailPresenter;
+
+interface
+
+uses
+  System.SysUtils, System.DateUtils,
+  WeatherTypes, StationService, StationDetailForm;
+
+type
+  TStationDetailPresenter = class
+  private
+    FView: IStationDetailView;
+    FService: TStationService;
+    FCurrentStationID: string;
+    FCurrentStation: TWeatherStation;
+
+    function IsMaintenanceOverdue: Boolean;
+    procedure CheckMaintenanceStatus;
+
+  public
+    constructor Create(AView: IStationDetailView; AService: TStationService);
+    destructor Destroy; override;
+
+    procedure LoadStation(const AStationID: string);
+    procedure EditStation;
+    procedure DeleteStation;
+    procedure Refresh;
+  end;
+
+//  // Interface definition (doit être ici pour éviter les dépendances circulaires)
+//  IStationDetailView = interface
+//    ['{D4E5F6A7-B8C9-0123-4567-890ABCDEF345}']
+//    procedure DisplayStationInfo(const Station: TWeatherStation);
+//    procedure DisplaySensors(const Sensors: TWeatherStationSensorList);
+//    procedure ShowMaintenanceAlert(const Message: string);
+//    procedure HideMaintenanceAlert;
+//    procedure ShowError(const Message: string);
+//    procedure ShowSuccess(const Message: string);
+//    procedure ShowInfo(const Message: string);
+//    function ConfirmDelete(const StationName: string): Boolean;
+//    procedure CloseView;
+//  end;
+
+implementation
+
+uses
+  StationForm, DatabaseManager, System.UITypes;
+
+{ TStationDetailPresenter }
+
+constructor TStationDetailPresenter.Create(AView: IStationDetailView;
+   AService: TStationService);
+begin
+  inherited Create;
+  FView := AView;
+  FService := AService;
+  FCurrentStation := nil;
+end;
+
+destructor TStationDetailPresenter.Destroy;
+begin
+  FCurrentStation.Free;
+  inherited;
+end;
+
+procedure TStationDetailPresenter.LoadStation(const AStationID: string);
+var
+  Station: TWeatherStation;
+begin
+  FCurrentStationID := AStationID;
+  
+  try
+    Station := FService.GetStation(AStationID);
+    
+    if not Assigned(Station) then
+    begin
+      FView.ShowError('Station not found.');
+      FView.CloseView;
+      Exit;
+    end;
+    
+    try
+      // Store current station
+      FreeAndNil(FCurrentStation);
+      FCurrentStation := Station;
+      Station := nil; // Transfer ownership
+      
+      // Display in view
+      FView.DisplayStationInfo(FCurrentStation);
+      
+      // Check maintenance status
+      CheckMaintenanceStatus;
+      
+    finally
+      Station.Free; // Free only if error occurred
+    end;
+    
+  except
+    on E: Exception do
+    begin
+      FView.ShowError('Error loading station: ' + E.Message);
+      FView.CloseView;
+    end;
+  end;
+end;
+
+procedure TStationDetailPresenter.CheckMaintenanceStatus;
+begin
+  if IsMaintenanceOverdue then
+    FView.ShowMaintenanceAlert(
+      'WARNING: Maintenance is overdue! Please schedule an intervention.')
+  else
+    FView.HideMaintenanceAlert;
+end;
+
+function TStationDetailPresenter.IsMaintenanceOverdue: Boolean;
+begin
+  Result := Assigned(FCurrentStation) and 
+            (FCurrentStation.NextMaintenance > 0) and 
+            (FCurrentStation.NextMaintenance <= Now);
+end;
+
+procedure TStationDetailPresenter.EditStation;
+var
+  StationForm: TfrmStationForm;
+begin
+  if not Assigned(FCurrentStation) then
+  begin
+    FView.ShowError('No station loaded.');
+    Exit;
+  end;
+  
+  StationForm := TfrmStationForm.Create(nil);
+  try
+    StationForm.IsEditing := True;
+    StationForm.DatabaseManager := FService.Database;
+    StationForm.StationService := FService;
+    StationForm.EditStation := FCurrentStation;
+    
+    if StationForm.ShowModal = mrOK then
+    begin
+      Refresh;
+      FView.ShowSuccess('Station updated successfully.');
+    end;
+  finally
+    StationForm.Free;
+  end;
+end;
+
+procedure TStationDetailPresenter.DeleteStation;
+var
+  Reason: string;
+begin
+  if not Assigned(FCurrentStation) then
+  begin
+    FView.ShowError('No station loaded.');
+    Exit;
+  end;
+  
+  if not FView.ConfirmDelete(FCurrentStation.Name) then
+    Exit;
+  
+  try
+    // Check business rules
+    if not FService.CanDeleteStation(FCurrentStation.ID, Reason) then
+    begin
+      FView.ShowInfo(Reason);
+      Exit;
+    end;
+    
+    // Delete station
+    if FService.DeleteStation(FCurrentStation.ID) then
+    begin
+      FView.ShowSuccess('Station deleted successfully.');
+      FView.CloseView;
+    end
+    else
+      FView.ShowError('Failed to delete station.');
+      
+  except
+    on E: Exception do
+      FView.ShowError('Error deleting station: ' + E.Message);
+  end;
+end;
+
+procedure TStationDetailPresenter.Refresh;
+begin
+  if not FCurrentStationID.IsEmpty then
+    LoadStation(FCurrentStationID);
+end;
+
+end.

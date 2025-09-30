@@ -1,0 +1,194 @@
+unit StationPresenter;
+
+interface
+
+uses
+  System.SysUtils, System.Generics.Collections,
+  WeatherTypes, StationService;
+
+type
+  // View Interface
+  IStationListView = interface
+    ['{A1B2C3D4-E5F6-7890-1234-567890ABCDEF}']
+    procedure DisplayStations(const Stations: TWeatherStationList);
+    procedure DisplayStatistics(const Stats: TStationStatistics);
+    procedure ShowError(const Message: string);
+    procedure ShowSuccess(const Message: string);
+    procedure ShowInfo(const Message: string);
+    function ConfirmDelete(const StationName: string): Boolean;
+    procedure RefreshUI;
+  end;
+
+  TStationListPresenter = class
+  private
+    FView: IStationListView;
+    FService: TStationService;
+    FCurrentFilter: TStationFilter;
+  public
+    constructor Create(AView: IStationListView; AService: TStationService);
+    
+    // View lifecycle
+    procedure Initialize;
+    procedure Refresh;
+    
+    // Data operations
+    procedure LoadStations;
+    procedure LoadStatistics;
+    
+    // Filtering
+    procedure ApplyFilter(const AFilter: TStationFilter);
+    procedure SearchStations(const ASearchText: string);
+    procedure FilterByType(const AType: TStationType);
+    procedure FilterByStatus(const AStatus: TStationStatus);
+    procedure ClearFilters;
+    
+    // CRUD operations
+    procedure AddStation;
+    procedure EditStation(const AStationID: string);
+    procedure DeleteStation(const AStationID: string);
+    procedure ViewStation(const AStationID: string);
+  end;
+
+implementation
+
+{ TStationListPresenter }
+
+constructor TStationListPresenter.Create(AView: IStationListView; 
+  AService: TStationService);
+begin
+  inherited Create;
+  FView := AView;
+  FService := AService;
+  FCurrentFilter := TStationFilter.All;
+end;
+
+procedure TStationListPresenter.Initialize;
+begin
+  LoadStations;
+  LoadStatistics;
+end;
+
+procedure TStationListPresenter.Refresh;
+begin
+  LoadStations;
+  LoadStatistics;
+  FView.RefreshUI;
+end;
+
+procedure TStationListPresenter.LoadStations;
+var
+  Stations: TWeatherStationList;
+begin
+  try
+    Stations := FService.FilterStations(FCurrentFilter);
+    try
+      FView.DisplayStations(Stations);
+    finally
+      Stations.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error loading stations: ' + E.Message);
+  end;
+end;
+
+procedure TStationListPresenter.LoadStatistics;
+var
+  Stats: TStationStatistics;
+begin
+  try
+    Stats := FService.GetStatistics;
+    FView.DisplayStatistics(Stats);
+  except
+    on E: Exception do
+      FView.ShowError('Error loading statistics: ' + E.Message);
+  end;
+end;
+
+procedure TStationListPresenter.ApplyFilter(const AFilter: TStationFilter);
+begin
+  FCurrentFilter := AFilter;
+  LoadStations;
+end;
+
+procedure TStationListPresenter.SearchStations(const ASearchText: string);
+begin
+  FCurrentFilter.SearchText := ASearchText;
+  LoadStations;
+end;
+
+procedure TStationListPresenter.FilterByType(const AType: TStationType);
+begin
+  FCurrentFilter.StationType := AType;
+  LoadStations;
+end;
+
+procedure TStationListPresenter.FilterByStatus(const AStatus: TStationStatus);
+begin
+  FCurrentFilter.Status := AStatus;
+  LoadStations;
+end;
+
+procedure TStationListPresenter.ClearFilters;
+begin
+  FCurrentFilter := TStationFilter.All;
+  LoadStations;
+end;
+
+procedure TStationListPresenter.AddStation;
+begin
+  // Note: Cette méthode ne fait que signaler l'action
+  // L'ouverture du formulaire reste dans la vue
+  // Le formulaire utilisera directement le service pour sauvegarder
+end;
+
+procedure TStationListPresenter.EditStation(const AStationID: string);
+begin
+  // Similaire à AddStation
+end;
+
+procedure TStationListPresenter.DeleteStation(const AStationID: string);
+var
+  Station: TWeatherStation;
+  Reason: string;
+begin
+  try
+    Station := FService.GetStation(AStationID);
+    if not Assigned(Station) then
+    begin
+      FView.ShowError('Station not found');
+      Exit;
+    end;
+    
+    try
+      if not FView.ConfirmDelete(Station.Name) then
+        Exit;
+      
+      if not FService.CanDeleteStation(AStationID, Reason) then
+      begin
+        FView.ShowInfo(Reason);
+        Exit;
+      end;
+      
+      if FService.DeleteStation(AStationID) then
+      begin
+        FView.ShowSuccess('Station deleted successfully');
+        Refresh;
+      end
+      else
+        FView.ShowError('Failed to delete station');
+    finally
+      Station.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error: ' + E.Message);
+  end;
+end;
+
+procedure TStationListPresenter.ViewStation(const AStationID: string);
+begin
+  // Similaire aux autres
+end;
+
+end.

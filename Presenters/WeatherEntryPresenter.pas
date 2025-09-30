@@ -1,0 +1,188 @@
+﻿unit WeatherEntryPresenter;
+
+interface
+
+uses
+  System.SysUtils, System.Generics.Collections,
+  WeatherTypes, WeatherEntryService;
+
+type
+  IWeatherEntryListView = interface
+    ['{B2C3D4E5-F6A7-8901-2345-67890BCDEF12}']
+    procedure DisplayEntries(const Entries: TWeatherEntryList);
+    procedure DisplayStatistics(const Stats: TWeatherEntryStatistics);
+    procedure ShowError(const Message: string);
+    procedure ShowSuccess(const Message: string);
+    function ConfirmDelete(const EntryInfo: string): Boolean;
+    procedure RefreshUI;
+  end;
+
+  TWeatherEntryListPresenter = class
+  private
+    FView: IWeatherEntryListView;
+    FService: TWeatherEntryService;
+    FCurrentFilter: TWeatherEntryFilter;
+  public
+    constructor Create(AView: IWeatherEntryListView; AService: TWeatherEntryService);
+    
+    procedure Initialize;
+    procedure Refresh;
+    
+    procedure LoadEntries;
+    procedure LoadStatistics;
+    
+    procedure ApplyFilter(const AFilter: TWeatherEntryFilter);
+    procedure FilterByStation(const AStationID: string);
+    procedure FilterByDateRange(const AStartDate, AEndDate: TDateTime);
+    procedure ClearFilters;
+    
+    procedure AddEntry;
+    procedure EditEntry(const AEntryID: string);
+    procedure DeleteEntry(const AEntryID: string);
+  end;
+
+implementation
+
+uses
+  DateUtils;
+
+{ TWeatherEntryListPresenter }
+
+constructor TWeatherEntryListPresenter.Create(AView: IWeatherEntryListView; 
+  AService: TWeatherEntryService);
+begin
+  inherited Create;
+  FView := AView;
+  FService := AService;
+  FCurrentFilter := TWeatherEntryFilter.All;
+end;
+
+procedure TWeatherEntryListPresenter.Initialize;
+begin
+  //LoadEntries;
+  //LoadStatistics;
+end;
+
+procedure TWeatherEntryListPresenter.Refresh;
+begin
+  LoadEntries;
+  LoadStatistics;
+  FView.RefreshUI;
+end;
+
+procedure TWeatherEntryListPresenter.LoadEntries;
+var
+  Entries: TWeatherEntryList;
+begin
+  try
+    Entries := FService.FilterEntries(FCurrentFilter);
+    try
+      FView.DisplayEntries(Entries);
+    finally
+      Entries.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error loading entries: ' + E.Message);
+  end;
+end;
+
+procedure TWeatherEntryListPresenter.LoadStatistics;
+var
+  Stats: TWeatherEntryStatistics;
+begin
+  try
+    if FCurrentFilter.StationID.IsEmpty then
+      Stats := FService.GetStatistics
+    else
+      Stats := FService.GetStationStatistics(FCurrentFilter.StationID);
+      
+    FView.DisplayStatistics(Stats);
+  except
+    on E: Exception do
+      FView.ShowError('Error loading statistics: ' + E.Message);
+  end;
+end;
+
+procedure TWeatherEntryListPresenter.ApplyFilter(const AFilter: TWeatherEntryFilter);
+begin
+  FCurrentFilter := AFilter;
+  LoadEntries;
+end;
+
+procedure TWeatherEntryListPresenter.FilterByStation(const AStationID: string);
+begin
+  FCurrentFilter.StationID := AStationID;
+  LoadEntries;
+  LoadStatistics;
+end;
+
+procedure TWeatherEntryListPresenter.FilterByDateRange(const AStartDate, 
+  AEndDate: TDateTime);
+begin
+  FCurrentFilter.StartDate := AStartDate;
+  FCurrentFilter.EndDate := AEndDate;
+  LoadEntries;
+end;
+
+procedure TWeatherEntryListPresenter.ClearFilters;
+begin
+  FCurrentFilter := TWeatherEntryFilter.All;
+  LoadEntries;
+  LoadStatistics;
+end;
+
+procedure TWeatherEntryListPresenter.AddEntry;
+begin
+  // Signale l'action à la vue
+end;
+
+procedure TWeatherEntryListPresenter.EditEntry(const AEntryID: string);
+begin
+  // Signale l'action à la vue
+end;
+
+procedure TWeatherEntryListPresenter.DeleteEntry(const AEntryID: string);
+var
+  Entry: TWeatherEntry;
+  EntryInfo: string;
+  Reason: string;
+begin
+  try
+    Entry := FService.GetEntry(AEntryID);
+    if not Assigned(Entry) then
+    begin
+      FView.ShowError('Entry not found');
+      Exit;
+    end;
+    
+    try
+      EntryInfo := Format('Date: %s, Temperature: %.1f°C', 
+        [FormatDateTime('dd/mm/yyyy hh:nn', Entry.Timestamp), Entry.Temperature]);
+        
+      if not FView.ConfirmDelete(EntryInfo) then
+        Exit;
+      
+      if not FService.CanDeleteEntry(AEntryID, Reason) then
+      begin
+        FView.ShowError(Reason);
+        Exit;
+      end;
+      
+      if FService.DeleteEntry(AEntryID) then
+      begin
+        FView.ShowSuccess('Entry deleted successfully');
+        Refresh;
+      end
+      else
+        FView.ShowError('Failed to delete entry');
+    finally
+      Entry.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error: ' + E.Message);
+  end;
+end;
+
+end.

@@ -1,0 +1,1268 @@
+unit Main;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls,
+  Vcl.Grids, System.Actions, Vcl.ActnList, Vcl.ExtCtrls, Vcl.Menus, Vcl.Themes,
+  
+  // TMS Controls
+  scControls, scModernControls, scExtControls, scStyledForm, scStyleManager,
+  scAdvancedControls, scHint, scDrawUtils, scGPImages,
+  scGPControls, scGPExtControls, scGPPagers, scGPFontControls,
+  AdvUtil, AdvObj, BaseGrid, AdvGrid, AdvListV, AdvPanel, mooncomp, AdvReflectionLabel,
+  
+  // Application layers
+  WeatherTypes, DatabaseManager, 
+  StationService, WeatherEntryService,
+  StationPresenter, WeatherEntryPresenter, MainPresenter, System.ImageList,
+  Vcl.ImgList, Vcl.VirtualImageList, Vcl.BaseImageCollection,
+  Vcl.ImageCollection, scImageCollection,  Vcl.Imaging.pngimage,
+  TMS.MI.ProfilerComponent;
+
+type
+  TFrmMain = class(TForm, IStationListView, IWeatherEntryListView, IMainView)
+    // Styling Components
+    scStyleManager1: TscStyleManager;
+    scStyledForm1: TscStyledForm;
+    scGPClientPanel: TscGPPanel;
+    scGPFormPanel: TscGPPanel;
+
+    // Sidebar controls
+    scGPSidebar: TscGPPanel;
+    scGPSettingsButton: TscGPButton;
+    scGPReportsButton: TscGPButton;
+    scGPDashboardButton: TscGPButton;
+    scGPAboutButton: TscGPButton;
+    ExitButton: TscGPButton;
+    scGPImageCollection1: TscGPImageCollection;
+    ImageCollectionSidebar: TImageCollection;
+    VirtualImageListSidebar: TVirtualImageList;
+
+    // Menu
+    MenuButton: TscGPGlyphButton;
+    PopupMenu: TPopupMenu;
+    New: TMenuItem;
+    Open: TMenuItem;
+    Save: TMenuItem;
+    SaveAs: TMenuItem;
+    Print: TMenuItem;
+    PrintSetup: TMenuItem;
+    Exit1: TMenuItem;
+    N1: TMenuItem;
+    N2: TMenuItem;
+    N3: TMenuItem;
+    OpenDialog: TOpenDialog;
+    SaveDialog: TSaveDialog;
+
+    // Status bar
+    scGPSizeBox: TscGPSizeBox;
+    scGPStatusPanel: TscGPPanel;
+    StatusBar: TStatusBar;
+
+    // Client Panel
+    ClientPanel: TscPanel;
+    CloseButton: TscGPGlyphButton;
+    MinButton: TscGPGlyphButton;
+    TitleLabel: TscLabel;
+    MaxButton: TscGPGlyphButton;
+    scPageViewer: TscPageViewer;
+    scPageViewerPageDashboard: TscPageViewerPage;
+    scPageViewerPageStations: TscPageViewerPage;
+    scPageViewerPageSettings: TscPageViewerPage;
+    scPageViewerPage4: TscPageViewerPage;
+    scGPHeaderPanel: TscGPPanel;
+
+    // Timers
+    tmrRefresh: TTimer;
+    tmrSync: TTimer;
+
+    // Dashboard controls
+    AdvPanelGroupDashBoard: TAdvPanelGroup;
+    AdvPnlStat: TAdvPanel;
+    pnlTotalEntries: TPanel;
+    lblTotalEntriesValue: TLabel;
+    lblTotalEntriesCaption: TLabel;
+    pnlActiveStations: TPanel;
+    lblActiveStationsCaption: TLabel;
+    lblActiveStationsValue: TLabel;
+    pnlLastEntry: TPanel;
+    lblLastEntryCaption: TLabel;
+    lblLastEntryValue: TLabel;
+    pnlSyncStatus: TPanel;
+    lblSyncStatusCaption: TLabel;
+    lblSyncStatusValue: TLabel;
+
+    AdvPnlAlmanac: TAdvPanel;
+    pnlFetes: TPanel;
+    lblSaint: TLabel;
+    lblFete: TLabel;
+    pnlSun: TPanel;
+    LblHSunrise: TLabel;
+    LbLSunrise: TLabel;
+    LblSunset: TLabel;
+    LblHSunset: TLabel;
+    BtnSunDetails: TButton;
+    pnlMoon: TPanel;
+    btnMoonDetails: TButton;
+    Moon: TMoon;
+
+    AdvPnlWeather: TAdvPanel;
+    pcDashboard: TPageControl;
+    tsWeatherData: TTabSheet;
+    pnlWeatherActions: TPanel;
+    btnAddEntry: TButton;
+    btnEditEntry: TButton;
+    btnDeleteEntry: TButton;
+    btnRefreshData: TButton;
+    AdvGridWeatherData: TAdvStringGrid;
+    
+    tsLastWeatherEntry: TTabSheet;
+    tsCloudWeather: TTabSheet;
+
+    // Stations Page
+    pnlStationsStat: TPanel;
+    pnlStatsTotal: TPanel;
+    lblStatsTotalValue: TLabel;
+    lblStatsTotal: TLabel;
+    pnlStatsActive: TPanel;
+    lblStatsActiveValue: TLabel;
+    lblStatsActive: TLabel;
+    pnlStatsMaintenance: TPanel;
+    lblStatsMaintenanceValue: TLabel;
+    lblStatsMaintenance: TLabel;
+    pnlStatsError: TPanel;
+    lblStatsErrorValue: TLabel;
+    lblStatsError: TLabel;
+    pnlStatsInactive: TPanel;
+    lblStatsInactiveValue: TLabel;
+    lblStatsInactive: TLabel;
+    
+    pcStations: TPageControl;
+    tsStationList: TTabSheet;
+    pnlControls: TPanel;
+    edtSearch: TEdit;
+    cbbTypeFilter: TComboBox;
+    cbbStatusFilter: TComboBox;
+    btnAddStation: TButton;
+    btnEditStation: TButton;
+    btnDeleteStation: TButton;
+    btnViewStation: TButton;
+    AdvLvStations: TAdvListView;
+    
+    tsStationMap: TTabSheet;
+    pbMap: TPaintBox;
+    pnlMap: TPanel;
+    lblMapTitle: TLabel;
+    pnlMapLegend: TPanel;
+    
+    ActionList: TActionList;
+    actAddStation: TAction;
+    actEditStation: TAction;
+    actDeleteStation: TAction;
+    actViewStation: TAction;
+    actRefresh: TAction;
+    
+    AdvReflectionLabelToday: TAdvReflectionLabel;
+    lblStation: TLabel;
+    cmbStation: TComboBoxEx;
+
+    // Settings Page
+    pnlButtons: TPanel;
+    btnOK: TButton;
+    btnCancel: TButton;
+    btnApply: TButton;
+    btnDefaults: TButton;
+    pnlMain: TPanel;
+    pcSettings: TPageControl;
+    tsGeneral: TTabSheet;
+    tsNotifications: TTabSheet;
+    tsSync: TTabSheet;
+    tsData: TTabSheet;
+    BoxThermo: TGroupBox;
+    LabelTemper: TLabel;
+    LabelPress: TLabel;
+    LabelHygro: TLabel;
+    LblDegCel1: TLabel;
+    LblDegCel2: TLabel;
+    LblTprMin: TLabel;
+    LblTprMax: TLabel;
+    LblHpa2: TLabel;
+    LblHpa1: TLabel;
+    LblPrecip: TLabel;
+    LblHum: TLabel;
+    LblNeige: TLabel;
+    Lblmm: TLabel;
+    LblPourcent: TLabel;
+    Lblcm: TLabel;
+    LblPressMin: TLabel;
+    LblPressMax: TLabel;
+    LblEvol: TLabel;
+    Image2: TImage;
+    Image3: TImage;
+    Image4: TImage;
+    Image5: TImage;
+    Image1: TImage;
+    EditTprMax: TEdit;
+    EditTprMin: TEdit;
+    EditPressMin: TEdit;
+    EditPressMax: TEdit;
+    EditPrecip: TEdit;
+    EditHum: TEdit;
+    EditNeige: TEdit;
+    BoxVent: TGroupBox;
+    Rosace: TImage;
+    LabelDirection: TLabel;
+    LabelONO: TLabel;
+    LabelNO: TLabel;
+    LabelNNO: TLabel;
+    LabelN: TLabel;
+    LabelNNE: TLabel;
+    LabelNE: TLabel;
+    LabelENE: TLabel;
+    LabelE: TLabel;
+    LabelESE: TLabel;
+    LabelSE: TLabel;
+    LabelSSE: TLabel;
+    LabelS: TLabel;
+    LabelSSO: TLabel;
+    LabelSO: TLabel;
+    LabelOSO: TLabel;
+    LabelO: TLabel;
+    LabelForce: TLabel;
+    BoxForceVent: TComboBox;
+    BoxImgSat: TGroupBox;
+    GroupBox1: TGroupBox;
+    BoxComments: TGroupBox;
+    Commentaires: TMemo;
+    gbGeneral: TGroupBox;
+    lblTheme: TLabel;
+    lblLanguage: TLabel;
+    lblBackupInterval: TLabel;
+    lblBackupHours: TLabel;
+    cmbLanguage: TComboBox;
+    chkAutoBackup: TCheckBox;
+    edtBackupInterval: TEdit;
+    scComboBoxTheme: TscComboBox;
+    scCheckBoxFluentBkg: TscCheckBox;
+    scCheckBoxwallpaper: TscCheckBox;
+    scCheckBoxfluenteffect: TscCheckBox;
+    scGPToggleSwitch_win11: TscGPToggleSwitch;
+    gbNotifications: TGroupBox;
+    chkNotificationsEnabled: TCheckBox;
+    gbTemperatureAlerts: TGroupBox;
+    lblTempThreshold: TLabel;
+    lblTempUnit: TLabel;
+    chkTemperatureAlerts: TCheckBox;
+    edtTempThreshold: TEdit;
+    gbHumidityAlerts: TGroupBox;
+    lblHumidityThreshold: TLabel;
+    lblHumidityUnit: TLabel;
+    chkHumidityAlerts: TCheckBox;
+    edtHumidityThreshold: TEdit;
+    gbPressureAlerts: TGroupBox;
+    lblPressureThreshold: TLabel;
+    lblPressureUnit: TLabel;
+    chkPressureAlerts: TCheckBox;
+    edtPressureThreshold: TEdit;
+    gbWindAlerts: TGroupBox;
+    lblWindThreshold: TLabel;
+    lblWindUnit: TLabel;
+    chkWindAlerts: TCheckBox;
+    edtWindThreshold: TEdit;
+    gbSyncSettings: TGroupBox;
+    lblSyncInterval: TLabel;
+    lblSyncMinutes: TLabel;
+    lblConflictResolution: TLabel;
+    lblLastSync: TLabel;
+    chkSyncEnabled: TCheckBox;
+    edtSyncInterval: TEdit;
+    chkAutoImportOpenWeather: TCheckBox;
+    cmbConflictResolution: TComboBox;
+    gbDataManagement: TGroupBox;
+    btnExportData: TButton;
+    btnImportData: TButton;
+    btnClearAllData: TButton;
+    btnBackupDatabase: TButton;
+    btnRestoreDatabase: TButton;
+    gbDatabaseInfo: TGroupBox;
+    lblDatabasePath: TLabel;
+    lblDatabaseSize: TLabel;
+    lblTotalEntries: TLabel;
+    lblTotalStations: TLabel;
+    btnRefreshStats: TButton;
+    TMSMemInsightProfiler1: TTMSMemInsightProfiler;
+
+    // Form events
+    procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    
+    // Window controls
+    procedure CloseButtonClick(Sender: TObject);
+    procedure MinButtonClick(Sender: TObject);
+    procedure MaxButtonClick(Sender: TObject);
+    procedure Exit1Click(Sender: TObject);
+    procedure TitleLabelDblClick(Sender: TObject);
+    procedure scStyledForm1ChangeActive(Sender: TObject);
+    procedure TitleLabelMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure TitleLabelMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure TitleLabelMouseMove(Sender: TObject; Shift: TShiftState; X,
+      Y: Integer);
+    procedure scStyledForm1DWMClientMaximize(Sender: TObject);
+    procedure scStyledForm1DWMClientRestore(Sender: TObject);
+    procedure scComboBoxThemeChange(Sender: TObject);
+    procedure scCheckBoxFluentBkgClick(Sender: TObject);
+    procedure scCheckBoxwallpaperClick(Sender: TObject);
+    procedure scCheckBoxfluenteffectClick(Sender: TObject);
+    procedure scGPToggleSwitch_win11ChangeState(Sender: TObject);
+    procedure scStyledForm1ChangeFluentUIBackground(Sender: TObject);
+    
+    // Station events
+    procedure actAddStationExecute(Sender: TObject);
+    procedure actEditStationExecute(Sender: TObject);
+    procedure actDeleteStationExecute(Sender: TObject);
+    procedure actViewStationExecute(Sender: TObject);
+    procedure edtSearchChange(Sender: TObject);
+    procedure cbbTypeFilterChange(Sender: TObject);
+    procedure cbbStatusFilterChange(Sender: TObject);
+    procedure AdvLvStationsDblClick(Sender: TObject);
+    procedure AdvLvStationsSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
+    
+    // Weather entry events
+    procedure btnAddEntryClick(Sender: TObject);
+    procedure btnEditEntryClick(Sender: TObject);
+    procedure btnDeleteEntryClick(Sender: TObject);
+    procedure btnRefreshDataClick(Sender: TObject);
+    procedure AdvGridWeatherDataSelectCell(Sender: TObject; ACol, ARow: Integer; var CanSelect: Boolean);
+    procedure cmbStationChange(Sender: TObject);
+    
+    // Timer events
+    procedure tmrRefreshTimer(Sender: TObject);
+    
+    // Navigation
+    procedure scGPSettingsButtonClick(Sender: TObject);
+    procedure ExitButtonClick(Sender: TObject);
+    procedure btnMoonDetailsClick(Sender: TObject);
+    procedure BtnSunDetailsClick(Sender: TObject);
+
+  private
+    // Data layer
+    FDatabase: TDatabaseManager;
+    
+    // Service layer
+    FStationService: TStationService;
+    FWeatherEntryService: TWeatherEntryService;
+    
+    // Presenter layer
+    FMainPresenter: TMainPresenter;
+    FStationPresenter: TStationListPresenter;
+    FWeatherEntryPresenter: TWeatherEntryListPresenter;
+    
+    // Local data for UI binding
+    FDisplayedStations: TWeatherStationList;
+    FDisplayedEntries: TWeatherEntryList;
+    
+    // IStationListView implementation
+    procedure DisplayStations(const Stations: TWeatherStationList);
+    procedure DisplayStatistics(const Stats: TStationStatistics); overload;
+
+    // IWeatherEntryListView implementation
+    procedure DisplayEntries(const Entries: TWeatherEntryList);
+    procedure DisplayStatistics(const Stats: TWeatherEntryStatistics); overload;
+    function ConfirmDelete_Entry(const EntryInfo: string): Boolean;
+    
+    // IMainView implementation
+    procedure UpdateDashboard;
+    
+    // Common IView methods
+    procedure ShowError(const Message: string);
+    procedure ShowSuccess(const Message: string);
+    procedure ShowInfo(const Message: string);
+    function ConfirmDelete(const StationName: string): Boolean;
+    procedure RefreshUI;
+    
+    // Helper methods
+    procedure InitializeLayers;
+    procedure InitializeUI;
+    procedure LoadStationTypes;
+    procedure LoadStationStatuses;
+    procedure PopulateStationCombo;
+    function GetSelectedStation: TWeatherStation;
+    function GetSelectedEntry: TWeatherEntry;
+    procedure UpdateStationActions;
+    procedure UpdateEntryActions;
+    
+  public
+    { Public declarations }
+  end;
+
+var
+  frmMain: TFrmMain;
+
+implementation
+
+{$R *.dfm}
+
+uses
+  Math, StationForm, StationDetailForm, WeatherEntryForm, MoonDetails, SunDetails,
+  System.UITypes, DateUtils;
+
+{ TFrmMain }
+
+procedure TFrmMain.FormCreate(Sender: TObject);
+var
+  I: Integer;
+begin
+  if not scStyledForm1.IsFluentUIAvailable or (scStyledForm1.FluentUIBackground = scfuibNone) then
+  begin
+    StyleElements := [seClient];
+    scGPFormPanel.FrameWidth := 1;
+    SC_SetDrawTextModeInControl(scGPSidebar, scdtmGDI);
+    scGPSidebar.FillColorAlpha := 200;
+    scGPSidebar.TransparentBackground := False;
+    scCheckBoxFluentbkg.Visible := False;
+    scGPFormPanel.FillColor := clBtnFace;
+    ClientPanel.FluentUIOpaque := False;
+  end
+  else
+  begin
+    if IsWindows11 then
+      scGPFormPanel.FrameWidth := 1;
+  end;
+
+  for I := Low(TStyleManager.StyleNames) to High(TStyleManager.StyleNames) do
+    scComboBoxTheme.Items.Add(TStyleManager.StyleNames[I]);
+  scComboBoxTheme.ItemIndex := scComboBoxTheme.Items.IndexOf(TStyleManager.ActiveStyle.Name);
+
+  if IsWindows11 then
+   scGPToggleSwitch_win11.State := scswOn;
+
+  FDisplayedStations := nil;
+  FDisplayedEntries := nil;
+  
+  InitializeLayers;
+  InitializeUI;
+  LoadStationTypes;
+  LoadStationStatuses;
+end;
+
+procedure TFrmMain.InitializeLayers;
+begin
+  // Data Access Layer
+  FDatabase := TDatabaseManager.Create;
+  
+  // Service Layer
+  FStationService := TStationService.Create(FDatabase);
+  FWeatherEntryService := TWeatherEntryService.Create(FDatabase);
+
+  // Presenter Layer
+  FMainPresenter := TMainPresenter.Create(Self, FStationService, FWeatherEntryService);
+  FStationPresenter := TStationListPresenter.Create(Self, FStationService);
+  FWeatherEntryPresenter := TWeatherEntryListPresenter.Create(Self, FWeatherEntryService);
+end;
+
+procedure TFrmMain.InitializeUI;
+begin
+  // Timers
+  tmrRefresh.Interval := 30000; // 30 seconds
+  tmrSync.Interval := 300000;   // 5 minutes
+  
+  // Page control
+  scPageViewer.PageIndex := 0;
+  pcDashboard.ActivePageIndex := 0;
+  pcStations.ActivePageIndex := 0;
+end;
+
+procedure TFrmMain.FormShow(Sender: TObject);
+begin
+  if not FDatabase.Initialize then
+  begin
+    ShowError('Failed to initialize database. Application will close.');
+    Application.Terminate;
+    Exit;
+  end;
+
+  StatusBar.Panels[1].Text := 'Database: Connected';
+  
+  // Initialize presenters
+  FMainPresenter.Initialize;
+  FStationPresenter.Initialize;
+  FWeatherEntryPresenter.Initialize;
+
+  // Populate controls
+  PopulateStationCombo;
+  
+  // Start timers
+  tmrRefresh.Enabled := True;
+  tmrSync.Enabled := True;
+end;
+
+procedure TFrmMain.FormDestroy(Sender: TObject);
+begin
+  tmrRefresh.Enabled := False;
+  tmrSync.Enabled := False;
+  
+  // Presenter layer
+  FWeatherEntryPresenter.Free;
+  FStationPresenter.Free;
+  FMainPresenter.Free;
+  
+  // Service layer
+  FWeatherEntryService.Free;
+  FStationService.Free;
+  
+  // Data layer
+  FDatabase.Free;
+  
+  // Local data
+  FDisplayedStations.Free;
+  FDisplayedEntries.Free;
+end;
+
+procedure TFrmMain.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  Action := caFree;
+end;
+
+{ IStationListView Implementation }
+
+procedure TFrmMain.DisplayStations(const Stations: TWeatherStationList);
+var
+  Station: TWeatherStation;
+  Item: TListItem;
+  ActiveSensors, TotalSensors: Integer;
+  Sensor: TSensor;
+begin
+  AdvLvStations.Items.BeginUpdate;
+  try
+    AdvLvStations.Items.Clear;
+    
+    FreeAndNil(FDisplayedStations);
+    FDisplayedStations := TWeatherStationList.Create;
+    
+    for Station in Stations do
+    begin
+      FDisplayedStations.Add(Station.Clone);
+      
+      Item := AdvLvStations.Items.Add;
+      Item.Caption := Station.Name;
+      Item.SubItems.Add(Station.StationType.ToString);
+      Item.SubItems.Add(Station.Status.ToString);
+      Item.SubItems.Add(Station.Address);
+      Item.SubItems.Add(Format('%.4f, %.4f', 
+        [Station.Coordinates.Latitude, Station.Coordinates.Longitude]));
+      
+      ActiveSensors := 0;
+      TotalSensors := 0;
+      if Assigned(Station.Sensors) then
+      begin
+        TotalSensors := Station.Sensors.Count;
+        for Sensor in Station.Sensors do
+          if Sensor.IsActive then
+            Inc(ActiveSensors);
+      end;
+      Item.SubItems.Add(Format('%d/%d', [ActiveSensors, TotalSensors]));
+      
+      if Station.NextMaintenance > 0 then
+        Item.SubItems.Add(DateToStr(Station.NextMaintenance))
+      else
+        Item.SubItems.Add('Not defined');
+      
+      Item.ImageIndex := Ord(Station.Status);
+      Item.Data := Pointer(FDisplayedStations.Count - 1);
+    end;
+  finally
+    AdvLvStations.Items.EndUpdate;
+  end;
+  
+  UpdateStationActions;
+end;
+
+procedure TFrmMain.DisplayStatistics(const Stats: TStationStatistics);
+begin
+  lblStatsTotalValue.Caption := IntToStr(Stats.Total);
+  lblStatsActiveValue.Caption := IntToStr(Stats.Active);
+  lblStatsMaintenanceValue.Caption := IntToStr(Stats.Maintenance);
+  lblStatsErrorValue.Caption := IntToStr(Stats.Error);
+  lblStatsInactiveValue.Caption := IntToStr(Stats.Inactive);
+  
+  lblStatsActiveValue.Font.Color := $00008000;
+  lblStatsMaintenanceValue.Font.Color := $000080FF;
+  lblStatsErrorValue.Font.Color := $000000FF;
+  lblStatsInactiveValue.Font.Color := $00808080;
+end;
+
+{ IWeatherEntryListView Implementation }
+
+procedure TFrmMain.DisplayEntries(const Entries: TWeatherEntryList);
+var
+  Entry: TWeatherEntry;
+  I: Integer;
+  StationName: string;
+begin
+  AdvGridWeatherData.RowCount := Max(2, Entries.Count + 1);
+  
+  FreeAndNil(FDisplayedEntries);
+  FDisplayedEntries := TWeatherEntryList.Create;
+  
+  for I := 0 to Entries.Count - 1 do
+  begin
+    Entry := Entries[I];
+    StationName := FDatabase.GetStationName(Entry.StationID);
+    
+    AdvGridWeatherData.Cells[0, I + 1] := FormatDateTime('dd/mm/yyyy hh:nn', Entry.Timestamp);
+    AdvGridWeatherData.Cells[1, I + 1] := StationName;
+    AdvGridWeatherData.Cells[2, I + 1] := FloatToStrF(Entry.Temperature, ffFixed, 10, 1);
+    AdvGridWeatherData.Cells[3, I + 1] := FloatToStrF(Entry.Humidity, ffFixed, 10, 1);
+    AdvGridWeatherData.Cells[4, I + 1] := FloatToStrF(Entry.Pressure, ffFixed, 10, 1);
+    AdvGridWeatherData.Cells[5, I + 1] := FloatToStrF(Entry.WindSpeed, ffFixed, 10, 1);
+    AdvGridWeatherData.Cells[6, I + 1] := Entry.WindDirection;
+    AdvGridWeatherData.Cells[7, I + 1] := Entry.Conditions;
+    AdvGridWeatherData.Cells[8, I + 1] := Entry.Notes;
+    
+    AdvGridWeatherData.Objects[0, I + 1] := TObject(FDisplayedEntries.Count);
+    FDisplayedEntries.Add(Entry);
+  end;
+  
+  UpdateEntryActions;
+end;
+
+procedure TFrmMain.DisplayStatistics(const Stats: TWeatherEntryStatistics);
+begin
+  lblTotalEntriesValue.Caption := IntToStr(Stats.TotalEntries);
+  lblActiveStationsValue.Caption := IntToStr(FMainPresenter.GetActiveStations);
+  
+  if Stats.TotalEntries > 0 then
+    lblLastEntryValue.Caption := FormatDateTime('dd/mm/yyyy hh:nn', Stats.LastEntryDate)
+  else
+    lblLastEntryValue.Caption := 'No data';
+end;
+
+function TFrmMain.ConfirmDelete_Entry(const EntryInfo: string): Boolean;
+begin
+  Result := MessageDlg(
+    Format('Delete this weather entry?'#13#10#13#10'%s'#13#10#13#10 +
+           'This action cannot be undone.', [EntryInfo]),
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+end;
+
+{ IMainView Implementation }
+
+procedure TFrmMain.UpdateDashboard;
+begin
+  lblTotalEntriesValue.Caption := IntToStr(FMainPresenter.GetTotalEntries);
+  lblActiveStationsValue.Caption := IntToStr(FMainPresenter.GetActiveStations);
+  
+  if FMainPresenter.GetLastEntryDate > 0 then
+    lblLastEntryValue.Caption := FormatDateTime('dd/mm/yyyy hh:nn', 
+                                                 FMainPresenter.GetLastEntryDate)
+  else
+    lblLastEntryValue.Caption := 'No data';
+end;
+
+{ Common IView Methods }
+
+procedure TFrmMain.ShowError(const Message: string);
+begin
+  MessageDlg(Message, mtError, [mbOK], 0);
+end;
+
+procedure TFrmMain.ShowSuccess(const Message: string);
+begin
+  MessageDlg(Message, mtInformation, [mbOK], 0);
+end;
+
+procedure TFrmMain.ShowInfo(const Message: string);
+begin
+  MessageDlg(Message, mtInformation, [mbOK], 0);
+end;
+
+function TFrmMain.ConfirmDelete(const StationName: string): Boolean;
+begin
+  Result := MessageDlg(
+    Format('Are you sure you want to delete station "%s"?'#13#10#13#10 +
+           'This action cannot be undone.', [StationName]),
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+end;
+
+procedure TFrmMain.RefreshUI;
+begin
+  UpdateStationActions;
+  UpdateEntryActions;
+  Application.ProcessMessages;
+end;
+
+{ Station Event Handlers }
+
+procedure TFrmMain.actAddStationExecute(Sender: TObject);
+var
+  StationForm: TfrmStationForm;
+begin
+  StationForm := TfrmStationForm.Create(Self);
+  try
+    StationForm.IsEditing := False;
+    StationForm.DatabaseManager := FDatabase;
+    StationForm.StationService := FStationService;
+    
+    if StationForm.ShowModal = mrOk then
+      FStationPresenter.Refresh;
+  finally
+    StationForm.Free;
+  end;
+end;
+
+procedure TFrmMain.actEditStationExecute(Sender: TObject);
+var
+  StationForm: TfrmStationForm;
+  SelectedStation: TWeatherStation;
+begin
+  SelectedStation := GetSelectedStation;
+  if not Assigned(SelectedStation) then
+  begin
+    ShowInfo('Please select a station to edit.');
+    Exit;
+  end;
+  
+  StationForm := TfrmStationForm.Create(Self);
+  try
+    StationForm.IsEditing := True;
+    StationForm.DatabaseManager := FDatabase;
+    StationForm.StationService := FStationService;
+    StationForm.EditStation := SelectedStation;
+    
+    if StationForm.ShowModal = mrOk then
+      FStationPresenter.Refresh;
+  finally
+    StationForm.Free;
+  end;
+end;
+
+procedure TFrmMain.actDeleteStationExecute(Sender: TObject);
+var
+  SelectedStation: TWeatherStation;
+begin
+  SelectedStation := GetSelectedStation;
+  if not Assigned(SelectedStation) then
+  begin
+    ShowInfo('Please select a station to delete.');
+    Exit;
+  end;
+  
+  FStationPresenter.DeleteStation(SelectedStation.ID);
+end;
+
+procedure TfrmMain.actViewStationExecute(Sender: TObject);
+var
+  DetailForm: TfrmStationDetail;
+  SelectedStation: TWeatherStation;
+begin
+  SelectedStation := GetSelectedStation;
+  if not Assigned(SelectedStation) then
+  begin
+    ShowInfo('Please select a station to view.');
+    Exit;
+  end;
+  
+  DetailForm := TfrmStationDetail.Create(Self);
+  try
+    DetailForm.Database := FDatabase;
+    DetailForm.StationService := FStationService;
+    DetailForm.StationID := SelectedStation.ID;
+    
+    if DetailForm.ShowModal = mrOk then
+      FStationPresenter.Refresh; // Refresh if station was modified/deleted
+  finally
+    DetailForm.Free;
+  end;
+end;
+
+procedure TFrmMain.edtSearchChange(Sender: TObject);
+begin
+  FStationPresenter.SearchStations(edtSearch.Text);
+end;
+
+procedure TFrmMain.cbbTypeFilterChange(Sender: TObject);
+var
+  Filter: TStationFilter;
+  FilterType: TStationType;
+  FilterStatus: TStationStatus;
+begin
+  Filter := TStationFilter.All;
+  Filter.SearchText := edtSearch.Text;
+  
+  if cbbTypeFilter.ItemIndex <= 0 then
+    FilterType := TStationType(-1)
+  else
+    FilterType := TStationType(cbbTypeFilter.ItemIndex - 1);
+  
+  Filter.StationType := FilterType;
+  
+  if cbbStatusFilter.ItemIndex > 0 then
+    FilterStatus := TStationStatus(cbbStatusFilter.ItemIndex - 1)
+  else
+    FilterStatus := TStationStatus(-1);
+    
+  Filter.Status := FilterStatus;
+  
+  FStationPresenter.ApplyFilter(Filter);
+end;
+
+procedure TFrmMain.cbbStatusFilterChange(Sender: TObject);
+begin
+  cbbTypeFilterChange(Sender);
+end;
+
+procedure TFrmMain.AdvLvStationsDblClick(Sender: TObject);
+begin
+  if actViewStation.Enabled then
+    actViewStation.Execute;
+end;
+
+procedure TFrmMain.AdvLvStationsSelectItem(Sender: TObject; Item: TListItem; 
+  Selected: Boolean);
+begin
+  UpdateStationActions;
+end;
+
+{ Weather Entry Event Handlers }
+
+procedure TFrmMain.btnAddEntryClick(Sender: TObject);
+var
+  EntryForm: TfrmWeatherEntry;
+begin
+  EntryForm := TfrmWeatherEntry.Create(Self);
+  try
+    EntryForm.EditMode := False;
+    EntryForm.Database := FDatabase;
+    EntryForm.WeatherEntryService := FWeatherEntryService;
+    
+    if EntryForm.ShowModal = mrOk then
+      FWeatherEntryPresenter.Refresh;
+  finally
+    EntryForm.Free;
+  end;
+end;
+
+procedure TFrmMain.btnEditEntryClick(Sender: TObject);
+var
+  EntryForm: TfrmWeatherEntry;
+  SelectedEntry: TWeatherEntry;
+begin
+  SelectedEntry := GetSelectedEntry;
+  if not Assigned(SelectedEntry) then
+  begin
+    ShowInfo('Please select an entry to edit.');
+    Exit;
+  end;
+  
+  EntryForm := TfrmWeatherEntry.Create(Self);
+  try
+    EntryForm.EditMode := True;
+    EntryForm.Database := FDatabase;
+    EntryForm.WeatherEntryService := FWeatherEntryService;
+    EntryForm.EditEntry := SelectedEntry;
+    
+    if EntryForm.ShowModal = mrOk then
+      FWeatherEntryPresenter.Refresh;
+  finally
+    EntryForm.Free;
+  end;
+end;
+
+procedure TFrmMain.btnDeleteEntryClick(Sender: TObject);
+var
+  SelectedEntry: TWeatherEntry;
+begin
+  SelectedEntry := GetSelectedEntry;
+  if not Assigned(SelectedEntry) then
+  begin
+    ShowInfo('Please select an entry to delete.');
+    Exit;
+  end;
+  
+  FWeatherEntryPresenter.DeleteEntry(SelectedEntry.ID);
+end;
+
+procedure TFrmMain.btnRefreshDataClick(Sender: TObject);
+begin
+  FWeatherEntryPresenter.Refresh;
+  FMainPresenter.RefreshDashboard;
+end;
+
+procedure TFrmMain.AdvGridWeatherDataSelectCell(Sender: TObject; ACol, 
+  ARow: Integer; var CanSelect: Boolean);
+begin
+  CanSelect := True;
+  UpdateEntryActions;
+end;
+
+procedure TFrmMain.cmbStationChange(Sender: TObject);
+var
+  SelectedStation: TWeatherStation;
+begin
+  if (cmbStation.ItemIndex >= 0) and 
+     Assigned(cmbStation.Items.Objects[cmbStation.ItemIndex]) then
+  begin
+    SelectedStation := TWeatherStation(cmbStation.Items.Objects[cmbStation.ItemIndex]);
+    FWeatherEntryPresenter.FilterByStation(SelectedStation.ID);
+  end
+  else
+    FWeatherEntryPresenter.ClearFilters;
+end;
+
+{ Timer Events }
+
+procedure TFrmMain.tmrRefreshTimer(Sender: TObject);
+begin
+  FMainPresenter.RefreshDashboard;
+end;
+
+{ Helper Methods }
+
+procedure TFrmMain.LoadStationTypes;
+var
+  StationType: TStationType;
+begin
+  cbbTypeFilter.Items.Clear;
+  cbbTypeFilter.Items.Add('All types');
+  
+  for StationType := Low(TStationType) to High(TStationType) do
+    cbbTypeFilter.Items.Add(StationType.ToString);
+  
+  cbbTypeFilter.ItemIndex := 0;
+end;
+
+procedure TFrmMain.LoadStationStatuses;
+var
+  Status: TStationStatus;
+begin
+  cbbStatusFilter.Items.Clear;
+  cbbStatusFilter.Items.Add('All status');
+  
+  for Status := Low(TStationStatus) to High(TStationStatus) do
+    cbbStatusFilter.Items.Add(Status.ToString);
+  
+  cbbStatusFilter.ItemIndex := 0;
+end;
+
+procedure TFrmMain.PopulateStationCombo;
+var
+  Stations: TWeatherStationList;
+  Station: TWeatherStation;
+  I: Integer;
+begin
+  cmbStation.Items.BeginUpdate;
+  try
+    cmbStation.Items.Clear;
+    
+    Stations := FStationService.GetActiveStations;
+    try
+      for I := 0 to Stations.Count - 1 do
+      begin
+        Station := Stations[I];
+        cmbStation.Items.AddObject(Station.Name, Station);
+      end;
+      
+      if cmbStation.Items.Count > 0 then
+        cmbStation.ItemIndex := 0;
+    finally
+      Stations.Free;
+    end;
+  finally
+    cmbStation.Items.EndUpdate;
+  end;
+end;
+
+function TFrmMain.GetSelectedStation: TWeatherStation;
+var
+  Index: Integer;
+begin
+  Result := nil;
+  
+  if (AdvLvStations.Selected <> nil) and Assigned(FDisplayedStations) then
+  begin
+    Index := Integer(AdvLvStations.Selected.Data);
+    if (Index >= 0) and (Index < FDisplayedStations.Count) then
+      Result := FDisplayedStations[Index];
+  end;
+end;
+
+function TFrmMain.GetSelectedEntry: TWeatherEntry;
+var
+  Index: Integer;
+begin
+  Result := nil;
+  
+  if (AdvGridWeatherData.Row > 0) and 
+     (AdvGridWeatherData.Row < AdvGridWeatherData.RowCount) and
+     Assigned(FDisplayedEntries) then
+  begin
+    Index := Integer(AdvGridWeatherData.Objects[0, AdvGridWeatherData.Row]);
+    if (Index >= 0) and (Index < FDisplayedEntries.Count) then
+      Result := FDisplayedEntries[Index];
+  end;
+end;
+
+procedure TFrmMain.UpdateStationActions;
+var
+  HasSelection: Boolean;
+begin
+  HasSelection := AdvLvStations.Selected <> nil;
+  
+  actEditStation.Enabled := HasSelection;
+  actDeleteStation.Enabled := HasSelection;
+  actViewStation.Enabled := HasSelection;
+end;
+
+procedure TFrmMain.UpdateEntryActions;
+var
+  HasSelection: Boolean;
+begin
+  HasSelection := (AdvGridWeatherData.Row > 0) and 
+                  (AdvGridWeatherData.Row < AdvGridWeatherData.RowCount);
+  
+  btnEditEntry.Enabled := HasSelection;
+  btnDeleteEntry.Enabled := HasSelection;
+end;
+
+{ Window Controls }
+
+procedure TFrmMain.CloseButtonClick(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TFrmMain.MinButtonClick(Sender: TObject);
+begin
+  Application.Minimize;
+end;
+
+procedure TFrmMain.MaxButtonClick(Sender: TObject);
+begin
+  if WindowState = wsMaximized then
+    WindowState := wsNormal
+  else
+WindowState := wsMaximized;
+end;
+
+procedure TFrmMain.Exit1Click(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TFrmMain.ExitButtonClick(Sender: TObject);
+begin
+  Close;
+end;
+
+{ Navigation }
+
+procedure TFrmMain.scGPSettingsButtonClick(Sender: TObject);
+begin
+  scPageViewer.PageIndex := TControl(Sender).Tag;
+  scGPHeaderPanel.Caption := TscGPButton(Sender).Caption;
+end;
+
+procedure TFrmMain.TitleLabelMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  if (Button = mbLeft) and not (ssDouble in Shift) and scStyledForm1.IsDWMClientMaximized then
+   scStyledForm1.DWMClientStartDrag;
+end;
+
+procedure TFrmMain.TitleLabelMouseMove(Sender: TObject; Shift: TShiftState; X,
+  Y: Integer);
+begin
+  if scStyledForm1.IsDWMClientMaximized and scStyledForm1.IsDWMClientDragging then
+  begin
+    scStyledForm1.DWMClientDrag;
+    if not scStyledForm1.IsDWMClientMaximized then
+    begin
+      MaxButton.GlyphOptions.Kind := scgpbgkMaximize;
+      scGPSizeBox.Visible := True;
+    end;
+  end;
+end;
+
+procedure TFrmMain.TitleLabelMouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  scStyledForm1.DWMClientEndDrag;
+end;
+
+procedure TFrmMain.scCheckBoxFluentBkgClick(Sender: TObject);
+begin
+   if scStyledForm1.IsFluentUIAvailable then
+     if scCheckBoxFluentbkg.Checked then
+     begin
+       scGPFormPanel.FillColor := clBlack;
+
+       if not IsWindows11 then
+         scGPFormPanel.FrameWidth := 0;
+
+       ClientPanel.FluentUIOpaque := True;
+       SC_SetDrawTextModeInControl(scGPSidebar, scdtmGDIPlus);
+       scGPSidebar.TransparentBackground := True;
+       scStyledForm1.FluentUIBackground := scfuibAcrylicBlurAuto;
+       scCheckBoxFluentbkg.SetFocus;
+     end
+     else
+     begin
+       scGPFormPanel.FrameWidth := 1;
+       scGPFormPanel.FillColor := clBtnFace;
+       ClientPanel.FluentUIOpaque := False;
+       SC_SetDrawTextModeInControl(scGPSidebar, scdtmGDI);
+       scGPSidebar.TransparentBackground := False;
+       Color := scDrawUtils.GetStyleColor(clBtnFace);
+       scStyledForm1.FluentUIBackground := scfuibNone;
+       scCheckBoxFluentbkg.SetFocus;
+     end;
+end;
+
+procedure TFrmMain.TitleLabelDblClick(Sender: TObject);
+begin
+  if scStyledForm1.IsDWMClientMaximized then
+    scStyledForm1.DWMClientRestore
+  else
+    scStyledForm1.DWMClientMaximize;
+end;
+
+procedure TFrmMain.scStyledForm1ChangeActive(Sender: TObject);
+begin
+  if Active then
+  begin
+    TitleLabel.Font.Color := clBtnText;
+    CloseButton.GlyphOptions.NormalColorAlpha := 255;
+    MinButton.GlyphOptions.NormalColorAlpha := 190;
+    MaxButton.GlyphOptions.NormalColorAlpha := 190;
+  end
+  else
+  begin
+    TitleLabel.Font.Color := clGray;
+    CloseButton.GlyphOptions.NormalColorAlpha := 150;
+    MinButton.GlyphOptions.NormalColorAlpha := 120;
+    MaxButton.GlyphOptions.NormalColorAlpha := 120;
+  end;
+end;
+
+procedure TFrmMain.scStyledForm1ChangeFluentUIBackground(Sender: TObject);
+begin
+  if scStyledForm1.IsFluentUIEnabled then
+  begin
+    if scStyledForm1.IsFluentUIAcrylicBackground then
+      scGPSidebar.FillColorAlpha := 100
+    else
+      scGPSidebar.FillColorAlpha := 230;
+  end
+  else
+    scGPSidebar.FillColorAlpha := 200;
+end;
+
+procedure TFrmMain.scStyledForm1DWMClientMaximize(Sender: TObject);
+begin
+  MaxButton.GlyphOptions.Kind := scgpbgkRestore;
+  scGPSizeBox.Visible := False;
+  scGPFormPanel.Sizeable := False;
+end;
+
+procedure TFrmMain.scStyledForm1DWMClientRestore(Sender: TObject);
+begin
+  MaxButton.GlyphOptions.Kind := scgpbgkMaximize;
+  scGPSizeBox.Visible := True;
+  scGPFormPanel.Sizeable := True;
+end;
+
+procedure TFrmMain.scGPToggleSwitch_win11ChangeState(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to scGPSidebar.ControlCount - 1 do
+    if (scGPSidebar.Controls[I] is TscGPButton) then
+       if scGPSidebar.Controls[I].Tag >= 0 then
+       with TscGPButton(scGPSidebar.Controls[I]) do
+       begin
+         if scGPToggleSwitch_win11.IsOn then
+         begin
+           Options.ShapeStyle := scgpLeftRoundedLine;
+           AlignWithMargins := True;
+         end
+         else
+         begin
+           if Tag > 0 then
+             AlignWithMargins := False;
+           Options.ShapeStyle := scgpLeftLine;
+         end;
+       end;
+
+  if scGPToggleSwitch_win11.IsOn then
+  begin
+    scGPDashboardButton.Margins.Left := scGPSettingsButton.Margins.Left;
+    scGPDashboardButton.Margins.Right := scGPSettingsButton.Margins.Right;
+    MenuButton.Options.ShapeStyle := scgpTabBottom;
+    ExitButton.Options.ShapeStyle := scgpRoundedRect;
+    ExitButton.AlignWithMargins := True;
+    scStyledForm1.DWMClientRoundedCornersType := scDWMRoundedCornersDefault;
+  end
+  else
+  begin
+    scGPDashboardButton.Margins.Left := 0;
+    scGPDashboardButton.Margins.Right := 0;
+    MenuButton.Options.ShapeStyle := scgpRect;
+    ExitButton.Options.ShapeStyle := scgpRect;
+    ExitButton.AlignWithMargins := False;
+    scStyledForm1.DWMClientRoundedCornersType := scDWMRoundedCornersOff;
+  end;
+
+end;
+
+procedure TFrmMain.scCheckBoxwallpaperClick(Sender: TObject);
+begin
+  if scCheckBoxWallpaper.Checked then
+    scGPSidebar.CustomImageIndex := 0
+  else
+    scGPSidebar.CustomImageIndex := -1;
+end;
+
+procedure TFrmMain.scCheckBoxfluenteffectClick(Sender: TObject);
+begin
+  MenuButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+  ExitButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+  scGPDashboardButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+  scGPSettingsButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+  scGPReportsButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+  scGPAboutButton.FluentLightEffect := scCheckBoxFluentEffect.Checked;
+end;
+
+procedure TFrmMain.scComboBoxThemeChange(Sender: TObject);
+begin
+  TStyleManager.SetStyle(scComboBoxTheme.Items[scComboBoxTheme.ItemIndex]);
+  if scStyledForm1.FluentUIBackground = scfuibNone then
+    Color := scDrawUtils.GetStyleColor(clBtnFace);
+end;
+
+procedure TfrmMain.btnMoonDetailsClick(Sender: TObject);
+begin
+   with TMoonForm.Create(Self) do
+   try
+     ShowModal;
+   finally
+     Free;
+   end;
+end;
+
+procedure TfrmMain.BtnSunDetailsClick(Sender: TObject);
+begin
+   with TSunForm.Create(Self) do
+   try
+     ShowModal;
+   finally
+     Free;
+   end;
+end;
+
+end.

@@ -1,0 +1,483 @@
+﻿unit StationDetailForm;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls,
+  Vcl.ComCtrls, Vcl.Buttons, Vcl.Imaging.pngimage, Vcl.Grids, System.Actions,
+  Vcl.ActnList, AdvUtil, AdvObj,
+  BaseGrid, AdvGrid, AdvListV,
+
+   WeatherTypes, DatabaseManager, StationService;
+
+type
+  // Interface pour la vue de détail
+  IStationDetailView = interface
+    ['{D4E5F6A7-B8C9-0123-4567-890ABCDEF345}']
+    procedure DisplayStationInfo(const Station: TWeatherStation);
+    procedure DisplaySensors(const Sensors: TWeatherStationSensorList);
+    procedure ShowMaintenanceAlert(const Message: string);
+    procedure HideMaintenanceAlert;
+    procedure ShowError(const Message: string);
+    procedure ShowSuccess(const Message: string);
+    procedure ShowInfo(const Message: string);
+    function ConfirmDelete(const StationName: string): Boolean;
+    procedure CloseView;
+  end;
+
+  TfrmStationDetail = class(TForm, IStationDetailView)
+    pnlHeader: TPanel;
+    lblStationName: TLabel;
+    lblStationAddress: TLabel;
+    pnlButtons: TPanel;
+    btnEdit: TButton;
+    btnDelete: TButton;
+    btnClose: TButton;
+    ActionList: TActionList;
+    actEdit: TAction;
+    actDelete: TAction;
+    pnlContent: TPanel;
+    gbGeneral: TGroupBox;
+    lblType: TLabel;
+    lblTypeValue: TLabel;
+    lblStatus: TLabel;
+    lblCoordinates: TLabel;
+    lblCoordinatesValue: TLabel;
+    lblAltitude: TLabel;
+    lblAltitudeValue: TLabel;
+    lblDescription: TLabel;
+    pnlStatus: TPanel;
+    memoDescription: TMemo;
+    gbMaintenance: TGroupBox;
+    lblInstallation: TLabel;
+    lblInstallationValue: TLabel;
+    lblLastMaintenance: TLabel;
+    lblLastMaintenanceValue: TLabel;
+    lblNextMaintenance: TLabel;
+    lblNextMaintenanceValue: TLabel;
+    pnlMaintenanceAlert: TPanel;
+    lblMaintenanceAlert: TLabel;
+    gbSensors: TGroupBox;
+    lblSensorCount: TLabel;
+    gbPhoto: TGroupBox;
+    imgPhoto: TImage;
+    gbLocation: TGroupBox;
+    pbLocation: TPaintBox;
+    btnViewOnMap: TButton;
+    AdvLvSensorsList: TAdvListView;
+    
+    procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure actEditExecute(Sender: TObject);
+    procedure actDeleteExecute(Sender: TObject);
+    procedure btnCloseClick(Sender: TObject);
+    procedure pbLocationPaint(Sender: TObject);
+    procedure btnViewOnMapClick(Sender: TObject);
+    
+  private
+    FDatabase: TDatabaseManager;
+    FStationService: TStationService;
+    FPresenter: TObject;
+    FStationID: string;
+    FCurrentStation: TWeatherStation;
+    
+    // IStationDetailView implementation
+    procedure DisplayStationInfo(const Station: TWeatherStation);
+    procedure DisplaySensors(const Sensors: TWeatherStationSensorList);
+    procedure ShowMaintenanceAlert(const Message: string);
+    procedure HideMaintenanceAlert;
+    procedure ShowError(const Message: string);
+    procedure ShowSuccess(const Message: string);
+    procedure ShowInfo(const Message: string);
+    function ConfirmDelete(const StationName: string): Boolean;
+    procedure CloseView;
+    
+    // Helper methods
+    procedure InitializeControls;
+    procedure DrawLocationMap;
+    procedure ApplyStatusColor(Status: TStationStatus);
+    
+  public
+    property Database: TDatabaseManager read FDatabase write FDatabase;
+    property StationService: TStationService read FStationService write FStationService;
+    property StationID: string read FStationID write FStationID;
+  end;
+
+implementation
+
+{$R *.dfm}
+
+uses
+  StationDetailPresenter, StationForm, Math, System.UITypes, System.DateUtils;
+
+{ TfrmStationDetail }
+
+procedure TfrmStationDetail.FormCreate(Sender: TObject);
+begin
+  InitializeControls;
+  FCurrentStation := nil;
+end;
+
+procedure TfrmStationDetail.InitializeControls;
+begin
+  Position := poScreenCenter;
+  WindowState := wsNormal;
+  
+  with AdvLvSensorsList do
+  begin
+    if Columns.Count >= 6 then
+    begin
+      Columns[0].Width := 150;
+      Columns[1].Width := 120;
+      Columns[2].Width := 60;
+      Columns[3].Width := 50;
+      Columns[4].Width := 70;
+      Columns[5].Width := 120;
+    end;
+  end;
+  
+  btnEdit.Action := actEdit;
+  btnDelete.Action := actDelete;
+  
+  imgPhoto.Stretch := True;
+  imgPhoto.Proportional := True;
+  imgPhoto.Center := True;
+  
+  memoDescription.ReadOnly := True;
+  memoDescription.ScrollBars := ssVertical;
+  
+  pbLocation.OnPaint := pbLocationPaint;
+end;
+
+procedure TfrmStationDetail.FormShow(Sender: TObject);
+begin
+  if FStationID.IsEmpty then
+  begin
+    ShowError('No station ID provided.');
+    Close;
+    Exit;
+  end;
+  
+  if not Assigned(FDatabase) then
+  begin
+    ShowError('Database not assigned.');
+    Close;
+    Exit;
+  end;
+  
+  // Create presenter
+  if not Assigned(FStationService) then
+    FStationService := TStationService.Create(FDatabase);
+
+  FPresenter := TStationDetailPresenter.Create(Self as IStationDetailView, FStationService);
+  try
+    TStationDetailPresenter(FPresenter).LoadStation(FStationID);
+  except
+    on E: Exception do
+    begin
+      ShowError('Error loading station: ' + E.Message);
+      Close;
+    end;
+  end;
+end;
+
+procedure TfrmStationDetail.FormDestroy(Sender: TObject);
+begin
+  FPresenter.Free;
+  FCurrentStation.Free;
+end;
+
+{ IStationDetailView Implementation }
+
+procedure TfrmStationDetail.DisplayStationInfo(const Station: TWeatherStation);
+begin
+  // Store current station
+  FreeAndNil(FCurrentStation);
+  FCurrentStation := Station.Clone;
+  
+  Caption := 'Station Details - ' + Station.Name;
+  
+  // Header
+  lblStationName.Caption := Station.Name;
+  lblStationAddress.Caption := Station.Address;
+  
+  // General information
+  lblTypeValue.Caption := Station.StationType.ToString;
+  
+  // Status with color
+  pnlStatus.Caption := Station.Status.ToString;
+  ApplyStatusColor(Station.Status);
+  
+  lblCoordinatesValue.Caption := Format('%.4f, %.4f', 
+    [Station.Coordinates.Latitude, Station.Coordinates.Longitude]);
+  
+  if Station.Altitude > 0 then
+    lblAltitudeValue.Caption := Format('%d m', [Station.Altitude])
+  else
+    lblAltitudeValue.Caption := 'Not specified';
+    
+  memoDescription.Text := Station.Description;
+  
+  // Maintenance dates
+  if Station.InstallationDate > 0 then
+    lblInstallationValue.Caption := DateToStr(Station.InstallationDate)
+  else
+    lblInstallationValue.Caption := 'Not specified';
+    
+  if Station.LastMaintenance > 0 then
+    lblLastMaintenanceValue.Caption := DateToStr(Station.LastMaintenance)
+  else
+    lblLastMaintenanceValue.Caption := 'Not specified';
+    
+  if Station.NextMaintenance > 0 then
+    lblNextMaintenanceValue.Caption := DateToStr(Station.NextMaintenance)
+  else
+    lblNextMaintenanceValue.Caption := 'Not specified';
+  
+  // Photo
+  if (Station.Photo <> '') and FileExists(Station.Photo) then
+  begin
+    try
+      imgPhoto.Picture.LoadFromFile(Station.Photo);
+      gbPhoto.Visible := True;
+    except
+      gbPhoto.Visible := False;
+    end;
+  end
+  else
+    gbPhoto.Visible := False;
+
+  // Redraw map
+  pbLocation.Invalidate;
+  
+  // Display sensors
+  if Assigned(Station.Sensors) then
+    DisplaySensors(Station.Sensors);
+end;
+
+procedure TfrmStationDetail.DisplaySensors(const Sensors: TWeatherStationSensorList);
+var
+  Sensor: TSensor;
+  Item: TListItem;
+  ActiveCount, TotalCount: Integer;
+  AccuracyText, CalibrationText: string;
+begin
+  AdvLvSensorsList.Items.Clear;
+  
+  if not Assigned(Sensors) then
+  begin
+    lblSensorCount.Caption := 'Sensors (0 total, 0 active)';
+    Exit;
+  end;
+  
+  ActiveCount := 0;
+  TotalCount := Sensors.Count;
+  
+  for Sensor in Sensors do
+    if Sensor.IsActive then
+      Inc(ActiveCount);
+
+  lblSensorCount.Caption := Format('Sensors (%d total, %d active)', 
+    [TotalCount, ActiveCount]);
+
+  if TotalCount = 0 then
+  begin
+    Item := AdvLvSensorsList.Items.Add;
+    Item.Caption := 'No configured sensors';
+    Exit;
+  end;
+
+  for Sensor in Sensors do
+  begin
+    Item := AdvLvSensorsList.Items.Add;
+    Item.Caption := Sensor.Name;
+    Item.SubItems.Add(Sensor.SensorType.ToString);
+    Item.SubItems.Add(Sensor.&Unit);
+    
+    if Sensor.IsActive then
+    begin
+      Item.SubItems.Add('Yes');
+      Item.ImageIndex := 0;
+    end
+    else
+    begin
+      Item.SubItems.Add('No');
+      Item.ImageIndex := 1;
+    end;
+    
+    if Sensor.Accuracy > 0 then
+      AccuracyText := Format('±%.2f', [Sensor.Accuracy])
+    else
+      AccuracyText := '';
+    Item.SubItems.Add(AccuracyText);
+
+    if (Sensor.LastCalibration > 0) and 
+       (Sensor.LastCalibration < EncodeDate(2100, 1, 1)) then
+      CalibrationText := DateToStr(Sensor.LastCalibration)
+    else
+      CalibrationText := '';
+    Item.SubItems.Add(CalibrationText);
+  end;
+end;
+
+procedure TfrmStationDetail.ShowMaintenanceAlert(const Message: string);
+begin
+  pnlMaintenanceAlert.Visible := True;
+  pnlMaintenanceAlert.Color := clYellow;
+  lblMaintenanceAlert.Caption := Message;
+  lblMaintenanceAlert.Font.Color := clMaroon;
+  lblMaintenanceAlert.Font.Style := [fsBold];
+end;
+
+procedure TfrmStationDetail.HideMaintenanceAlert;
+begin
+  pnlMaintenanceAlert.Visible := False;
+end;
+
+procedure TfrmStationDetail.ShowError(const Message: string);
+begin
+  MessageDlg(Message, mtError, [mbOK], 0);
+end;
+
+procedure TfrmStationDetail.ShowSuccess(const Message: string);
+begin
+  MessageDlg(Message, mtInformation, [mbOK], 0);
+end;
+
+procedure TfrmStationDetail.ShowInfo(const Message: string);
+begin
+  MessageDlg(Message, mtInformation, [mbOK], 0);
+end;
+
+function TfrmStationDetail.ConfirmDelete(const StationName: string): Boolean;
+begin
+  Result := MessageDlg(
+    Format('Are you sure you want to delete station "%s"?'#13#10#13#10 +
+           'This action cannot be undone.', [StationName]),
+    mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+end;
+
+procedure TfrmStationDetail.CloseView;
+begin
+  ModalResult := mrOk;
+end;
+
+{ Helper Methods }
+
+procedure TfrmStationDetail.ApplyStatusColor(Status: TStationStatus);
+begin
+  pnlStatus.Font.Color := clWhite;
+  case Status of
+    ssActive: 
+      begin
+        pnlStatus.Font.Color := clWhite;
+        pnlStatus.Color := $00008000; // Green
+      end;
+    ssMaintenance:
+      begin
+        pnlStatus.Font.Color := clBlack;
+        pnlStatus.Color := $000080FF; // Orange
+      end;
+    ssInactive: 
+      begin
+        pnlStatus.Font.Color := clWhite;
+        pnlStatus.Color := $00808080; // Gray
+      end;
+    ssError: 
+      begin
+        pnlStatus.Font.Color := clWhite;
+        pnlStatus.Color := $000000FF; // Red
+      end;
+    ssTesting: 
+      begin
+        pnlStatus.Font.Color := clWhite;
+        pnlStatus.Color := $00FF8000; // Blue-Orange
+      end;
+  end;
+end;
+
+procedure TfrmStationDetail.DrawLocationMap;
+var
+  Canvas: TCanvas;
+  MapRect: TRect;
+  X, Y: Integer;
+begin
+  if not Assigned(FCurrentStation) then
+    Exit;
+    
+  Canvas := pbLocation.Canvas;
+  MapRect := pbLocation.ClientRect;
+  
+  // Background (light blue)
+  Canvas.Brush.Color := $00F0F8FF; // Alice Blue
+  Canvas.FillRect(MapRect);
+  
+  // Border
+  Canvas.Pen.Color := clBlue;
+  Canvas.Pen.Width := 2;
+  Canvas.Rectangle(MapRect);
+  
+  // Station position (centered for demo)
+  X := MapRect.Width div 2;
+  Y := MapRect.Height div 2;
+  
+  // Draw station point with status color
+  Canvas.Brush.Color := clRed;
+  Canvas.Pen.Color := clBlack;
+  Canvas.Pen.Width := 2;
+  Canvas.Ellipse(X - 8, Y - 8, X + 8, Y + 8);
+  
+  // Station name
+  Canvas.Font.Color := clBlack;
+  Canvas.Font.Style := [fsBold];
+  Canvas.Brush.Style := bsClear;
+  Canvas.TextOut(X + 12, Y - 8, FCurrentStation.Name);
+  
+  // Coordinates
+  Canvas.Font.Style := [];
+  Canvas.Font.Size := 8;
+  Canvas.TextOut(X + 12, Y + 8, 
+    Format('%.4f, %.4f', [FCurrentStation.Coordinates.Latitude, 
+                          FCurrentStation.Coordinates.Longitude]));
+end;
+
+{ Event Handlers }
+
+procedure TfrmStationDetail.actEditExecute(Sender: TObject);
+begin
+  if Assigned(FPresenter) then
+    TStationDetailPresenter(FPresenter).EditStation;
+end;
+
+procedure TfrmStationDetail.actDeleteExecute(Sender: TObject);
+begin
+  if Assigned(FPresenter) then
+    TStationDetailPresenter(FPresenter).DeleteStation;
+end;
+
+procedure TfrmStationDetail.btnCloseClick(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TfrmStationDetail.pbLocationPaint(Sender: TObject);
+begin
+  DrawLocationMap;
+end;
+
+procedure TfrmStationDetail.btnViewOnMapClick(Sender: TObject);
+begin
+  if not Assigned(FCurrentStation) then
+    Exit;
+    
+  ShowInfo(
+    Format('Station coordinates:'#13#10 +
+           'Latitude: %.6f'#13#10 +
+           'Longitude: %.6f'#13#10#13#10 +
+           'You can copy these coordinates to your favorite map application.',
+      [FCurrentStation.Coordinates.Latitude, FCurrentStation.Coordinates.Longitude]));
+end;
+
+end.

@@ -1,0 +1,532 @@
+﻿unit WeatherEntryForm;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, 
+  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, 
+  Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.Buttons,
+  
+  WeatherTypes, DatabaseManager, WeatherEntryService, 
+  System.Generics.Collections, AdvPanel;
+
+type
+  TfrmWeatherEntry = class(TForm)
+    pnlMain: TPanel;
+    pnlHeader: TPanel;
+    pnlContent: TPanel;
+    pnlButtons: TPanel;
+    
+    lblFormTitle: TLabel;
+    lblFormDescription: TLabel;
+    
+    gbEntryDetails: TGroupBox;
+    lblStation: TLabel;
+    cmbStation: TComboBoxEx;
+    
+    pnlDateTime: TPanel;
+    lblTimestamp: TLabel;
+    dtpDate: TDateTimePicker;
+    dtpTime: TDateTimePicker;
+    
+    btnOK: TButton;
+    btnCancel: TButton;
+    btnClear: TButton;
+    
+    AdvPnlWeatherEntry: TAdvPanelGroup;
+    
+    AdvPnlBaseParameters: TAdvPanel;
+    gbTemperature: TGroupBox;
+    lblTemperature: TLabel;
+    lblTempUnit: TLabel;
+    edtTemperature: TEdit;
+    gbHumidity: TGroupBox;
+    lblHumidity: TLabel;
+    lblHumidityUnit: TLabel;
+    edtHumidity: TEdit;
+    gbPressure: TGroupBox;
+    lblPressure: TLabel;
+    lblPressureUnit: TLabel;
+    edtPressure: TEdit;
+    gbPrecipitations: TGroupBox;
+    lblPrecipitations: TLabel;
+    lblPrecipitationsUnit: TLabel;
+    edtPrecipitations: TEdit;
+    
+    AdvPnlWind: TAdvPanel;
+    gbWindSpeed: TGroupBox;
+    lblWindSpeed: TLabel;
+    lblWindSpeedUnit: TLabel;
+    edtWindSpeed: TEdit;
+    gbWindGust: TGroupBox;
+    lblWindGust: TLabel;
+    lblWindGustUnit: TLabel;
+    edtWindGust: TEdit;
+    gbWindDirection: TGroupBox;
+    lblWindDirection: TLabel;
+    cmbWindDirection: TComboBox;
+    
+    gbConditions: TGroupBox;
+    lblConditions: TLabel;
+    cmbConditions: TComboBox;
+    
+    gbNotes: TGroupBox;
+    lblNotes: TLabel;
+    memoNotes: TMemo;
+    
+    AdvPnlSoil: TAdvPanel;
+    gbSnowDepth: TGroupBox;
+    lbSnowDepth: TLabel;
+    lblSnowDepthUnit: TLabel;
+    edtSnowDepth: TEdit;
+
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure btnOKClick(Sender: TObject);
+    procedure btnCancelClick(Sender: TObject);
+    procedure btnClearClick(Sender: TObject);
+    procedure cmbStationChange(Sender: TObject);
+
+  private
+    FDatabase: TDatabaseManager;
+    FWeatherEntryService: TWeatherEntryService;
+    FWeatherStations: TWeatherStationList;
+    FEditMode: Boolean;
+    FEditEntry: TWeatherEntry;
+    FCurrentEntry: TWeatherEntry;
+
+    procedure InitializeControls;
+    procedure PopulateStationCombo;
+    procedure LoadEntryData;
+    procedure ClearForm;
+    function ValidateInput: Boolean;
+    function SaveWeatherEntry: Boolean;
+    procedure ShowValidationError(const Message: string);
+    function GetSafeFloatValue(const Text: string; DefaultValue: Double = 0): Double;
+    
+  public
+    property Database: TDatabaseManager read FDatabase write FDatabase;
+    property WeatherEntryService: TWeatherEntryService read FWeatherEntryService 
+             write FWeatherEntryService;
+    property EditMode: Boolean read FEditMode write FEditMode;
+    property EditEntry: TWeatherEntry read FEditEntry write FEditEntry;
+  end;
+
+implementation
+
+{$R *.dfm}
+
+uses
+  DateUtils, Math, System.UITypes, ValidationService;
+
+{ TfrmWeatherEntry }
+
+procedure TfrmWeatherEntry.FormCreate(Sender: TObject);
+begin
+  FEditMode := False;
+  FWeatherStations := nil;
+  FEditEntry := nil;
+  FCurrentEntry := nil;
+  FWeatherEntryService := nil;
+  
+  InitializeControls;
+end;
+
+procedure TfrmWeatherEntry.FormDestroy(Sender: TObject);
+begin
+  FreeAndNil(FWeatherStations);
+  if not FEditMode then
+    FreeAndNil(FCurrentEntry);
+end;
+
+procedure TfrmWeatherEntry.InitializeControls;
+begin
+  cmbWindDirection.Items.Clear;
+  cmbWindDirection.Items.AddStrings([
+    'N', 'NNE', 'NE', 'ENE', 
+    'E', 'ESE', 'SE', 'SSE',
+    'S', 'SSW', 'SW', 'WSW', 
+    'W', 'WNW', 'NW', 'NNW']);
+  
+  cmbConditions.Items.Clear;
+  cmbConditions.Items.AddStrings([
+    'Clear', 'Partly Cloudy', 'Cloudy', 'Overcast',
+    'Fog', 'Mist', 'Drizzle', 'Rain', 'Heavy Rain',
+    'Thunderstorm', 'Snow', 'Sleet', 'Hail'
+  ]);
+  
+  dtpDate.Format := 'dd/MM/yyyy';
+  dtpTime.Format := 'HH:mm';
+  dtpTime.Kind := dtkTime;
+end;
+
+procedure TfrmWeatherEntry.FormShow(Sender: TObject);
+begin
+  if not Assigned(FDatabase) then
+  begin
+    MessageDlg('Database not assigned.', mtError, [mbOK], 0);
+    ModalResult := mrCancel;
+    Exit;
+  end;
+
+  PopulateStationCombo;
+
+  if FEditMode then
+  begin
+    lblFormTitle.Caption := 'Edit Weather Entry';
+    lblFormDescription.Caption := 'Modify the weather data entry details below';
+    
+    if not Assigned(FEditEntry) then
+    begin
+      MessageDlg('No entry assigned for editing.', mtError, [mbOK], 0);
+      ModalResult := mrCancel;
+      Exit;
+    end;
+    
+    LoadEntryData;
+  end
+  else
+  begin
+    lblFormTitle.Caption := 'Add Weather Entry';
+    lblFormDescription.Caption := 'Enter the weather data measurements below';
+    ClearForm;
+    dtpDate.Date := Date;
+    dtpTime.Time := Time;
+  end;
+end;
+
+procedure TfrmWeatherEntry.PopulateStationCombo;
+var
+  Station: TWeatherStation;
+  I: Integer;
+begin
+  cmbStation.Items.BeginUpdate;
+  try
+    FreeAndNil(FWeatherStations);
+    cmbStation.Items.Clear;
+
+    FWeatherStations := FDatabase.GetAllStations;
+
+    for I := 0 to FWeatherStations.Count - 1 do
+    begin
+      Station := FWeatherStations[I];
+      if Station.Status = ssActive then
+        cmbStation.Items.AddObject(Station.Name, Station);
+    end;
+
+    if cmbStation.Items.Count > 0 then
+      cmbStation.ItemIndex := 0
+    else
+      MessageDlg('No active stations available. Please add a station first.', 
+                 mtWarning, [mbOK], 0);
+
+  finally
+    cmbStation.Items.EndUpdate;
+  end;
+end;
+
+procedure TfrmWeatherEntry.LoadEntryData;
+var
+  Entry: TWeatherEntry;
+  I, StationIndex: Integer;
+begin
+  Entry := FDatabase.GetWeatherEntry(FEditEntry.ID);
+  
+  if not Assigned(Entry) then
+  begin
+    MessageDlg('Weather entry not found in database.', mtError, [mbOK], 0);
+    ModalResult := mrCancel;
+    Exit;
+  end;
+
+  try
+    FCurrentEntry := Entry;
+    Entry := nil;
+
+    StationIndex := -1;
+    for I := 0 to cmbStation.Items.Count - 1 do
+    begin
+      if TWeatherStation(cmbStation.Items.Objects[I]).ID = FCurrentEntry.StationID then
+      begin
+        StationIndex := I;
+        Break;
+      end;
+    end;
+
+    if StationIndex >= 0 then
+      cmbStation.ItemIndex := StationIndex;
+
+    dtpDate.Date := DateOf(FCurrentEntry.Timestamp);
+    dtpTime.Time := TimeOf(FCurrentEntry.Timestamp);
+
+    edtTemperature.Text := FloatToStrF(FCurrentEntry.Temperature, ffFixed, 10, 1);
+    edtHumidity.Text := FloatToStrF(FCurrentEntry.Humidity, ffFixed, 10, 1);
+    edtPressure.Text := FloatToStrF(FCurrentEntry.Pressure, ffFixed, 10, 1);
+    edtWindSpeed.Text := FloatToStrF(FCurrentEntry.WindSpeed, ffFixed, 10, 1);
+    edtWindGust.Text := FloatToStrF(FCurrentEntry.WindGust, ffFixed, 10, 1);
+    edtPrecipitations.Text := FloatToStrF(FCurrentEntry.Precipitations, ffFixed, 10, 1);
+    edtSnowDepth.Text := FloatToStrF(FCurrentEntry.Snow, ffFixed, 10, 1);
+
+    StationIndex := cmbWindDirection.Items.IndexOf(FCurrentEntry.WindDirection);
+    if StationIndex >= 0 then
+      cmbWindDirection.ItemIndex := StationIndex;
+
+    StationIndex := cmbConditions.Items.IndexOf(FCurrentEntry.Conditions);
+    if StationIndex >= 0 then
+      cmbConditions.ItemIndex := StationIndex;
+
+    memoNotes.Text := FCurrentEntry.Notes;
+
+  finally
+    Entry.Free;
+  end;
+end;
+
+procedure TfrmWeatherEntry.ClearForm;
+begin
+  if cmbStation.Items.Count > 0 then
+    cmbStation.ItemIndex := 0;
+    
+  dtpDate.Date := Date;
+  dtpTime.Time := Time;
+  
+  edtTemperature.Text := '0';
+  edtHumidity.Text := '0';
+  edtPressure.Text := '1013';
+  edtWindSpeed.Text := '0';
+  edtWindGust.Text := '0';
+  edtPrecipitations.Text := '0';
+  edtSnowDepth.Text := '0';
+  
+  cmbWindDirection.ItemIndex := -1;
+  cmbConditions.ItemIndex := 0;
+  
+  memoNotes.Text := '';
+end;
+
+function TfrmWeatherEntry.GetSafeFloatValue(const Text: string; 
+  DefaultValue: Double): Double;
+begin
+  if not TryStrToFloat(Text, Result) then
+    Result := DefaultValue;
+end;
+
+function TfrmWeatherEntry.ValidateInput: Boolean;
+var
+  TempValue: Double;
+  Error: string;
+begin
+  Result := False;
+  
+  if cmbStation.ItemIndex = -1 then
+  begin
+    ShowValidationError('Please select a weather station.');
+    if cmbStation.CanFocus then cmbStation.SetFocus;
+    Exit;
+  end;
+  
+  if Trim(edtTemperature.Text) = '' then
+  begin
+    ShowValidationError('Temperature is required.');
+    if edtTemperature.CanFocus then edtTemperature.SetFocus;
+    Exit;
+  end;
+  
+  if not TryStrToFloat(edtTemperature.Text, TempValue) then
+  begin
+    ShowValidationError('Please enter a valid temperature value.');
+    if edtTemperature.CanFocus then edtTemperature.SetFocus;
+    Exit;
+  end;
+  
+  if not TValidationService.ValidateTemperature(TempValue, Error) then
+  begin
+    ShowValidationError(Error);
+    if edtTemperature.CanFocus then edtTemperature.SetFocus;
+    Exit;
+  end;
+  
+  if not TryStrToFloat(edtHumidity.Text, TempValue) then
+  begin
+    ShowValidationError('Please enter a valid humidity value.');
+    if edtHumidity.CanFocus then edtHumidity.SetFocus;
+    Exit;
+  end;
+  
+  if not TValidationService.ValidateHumidity(TempValue, Error) then
+  begin
+    ShowValidationError(Error);
+    if edtHumidity.CanFocus then edtHumidity.SetFocus;
+    Exit;
+  end;
+  
+  if not TryStrToFloat(edtPressure.Text, TempValue) then
+  begin
+    ShowValidationError('Please enter a valid pressure value.');
+    if edtPressure.CanFocus then edtPressure.SetFocus;
+    Exit;
+  end;
+  
+  if not TValidationService.ValidatePressure(TempValue, Error) then
+  begin
+    ShowValidationError(Error);
+    if edtPressure.CanFocus then edtPressure.SetFocus;
+    Exit;
+  end;
+  
+  if not TryStrToFloat(edtWindSpeed.Text, TempValue) then
+  begin
+    ShowValidationError('Please enter a valid wind speed value.');
+    if edtWindSpeed.CanFocus then edtWindSpeed.SetFocus;
+    Exit;
+  end;
+  
+  if not TValidationService.ValidateWindSpeed(TempValue, Error) then
+  begin
+    ShowValidationError(Error);
+    if edtWindSpeed.CanFocus then edtWindSpeed.SetFocus;
+    Exit;
+  end;
+  
+  if cmbWindDirection.ItemIndex = -1 then
+  begin
+    ShowValidationError('Please select a wind direction.');
+    if cmbWindDirection.CanFocus then cmbWindDirection.SetFocus;
+    Exit;
+  end;
+  
+  if cmbConditions.ItemIndex = -1 then
+  begin
+    ShowValidationError('Please select weather conditions.');
+    if cmbConditions.CanFocus then cmbConditions.SetFocus;
+    Exit;
+  end;
+  
+  Result := True;
+end;
+
+function TfrmWeatherEntry.SaveWeatherEntry: Boolean;
+var
+  Entry: TWeatherEntry;
+  SelectedStation: TWeatherStation;
+  EntryDateTime: TDateTime;
+begin
+  Result := False;
+  
+  SelectedStation := TWeatherStation(cmbStation.Items.Objects[cmbStation.ItemIndex]);
+  EntryDateTime := Trunc(dtpDate.Date) + Frac(dtpTime.Time);
+  
+  if FEditMode and Assigned(FCurrentEntry) then
+  begin
+    Entry := FCurrentEntry;
+    Entry.StationID := SelectedStation.ID;
+    Entry.Timestamp := EntryDateTime;
+  end
+  else
+  begin
+    Entry := TWeatherEntry.Create(
+      SelectedStation.ID,
+      StrToFloat(edtTemperature.Text),
+      StrToFloat(edtHumidity.Text),
+      StrToFloat(edtPressure.Text),
+      StrToFloat(edtWindSpeed.Text),
+      GetSafeFloatValue(edtPrecipitations.Text, 0),
+      GetSafeFloatValue(edtSnowDepth.Text, 0),
+      cmbWindDirection.Text,
+      cmbConditions.Text,
+      memoNotes.Text
+    );
+    Entry.Timestamp := EntryDateTime;
+  end;
+  
+  Entry.Temperature := StrToFloat(edtTemperature.Text);
+  Entry.Humidity := StrToFloat(edtHumidity.Text);
+  Entry.Pressure := StrToFloat(edtPressure.Text);
+  Entry.WindSpeed := StrToFloat(edtWindSpeed.Text);
+  Entry.WindGust := StrToFloat(edtWindGust.Text);
+  Entry.WindDirection := cmbWindDirection.Text;
+  Entry.Precipitations := GetSafeFloatValue(edtPrecipitations.Text, 0);
+  Entry.Snow := GetSafeFloatValue(edtSnowDepth.Text, 0);
+  Entry.Conditions := cmbConditions.Text;
+  Entry.Notes := memoNotes.Text;
+  
+  try
+    if Assigned(FWeatherEntryService) then
+    begin
+      if FEditMode then
+        Result := FWeatherEntryService.UpdateEntry(Entry)
+      else
+      begin
+        Result := FWeatherEntryService.CreateEntry(Entry);
+        if Result then
+        begin
+          FCurrentEntry := Entry;
+          Entry := nil;
+        end;
+      end;
+    end
+    else
+    begin
+      if FEditMode then
+        Result := FDatabase.UpdateWeatherEntry(Entry)
+      else
+      begin
+        Result := FDatabase.AddWeatherEntry(Entry);
+        if Result then
+        begin
+          FCurrentEntry := Entry;
+          Entry := nil;
+        end;
+      end;
+    end;
+  except
+    on E: Exception do
+    begin
+      MessageDlg('Error saving entry: ' + E.Message, mtError, [mbOK], 0);
+      if not FEditMode then
+        Entry.Free;
+      Result := False;
+    end;
+  end;
+end;
+
+procedure TfrmWeatherEntry.ShowValidationError(const Message: string);
+begin
+  MessageDlg(Message, mtError, [mbOK], 0);
+end;
+
+procedure TfrmWeatherEntry.btnOKClick(Sender: TObject);
+begin
+  if not ValidateInput then
+    Exit;
+    
+  if not Assigned(FDatabase) then
+  begin
+    MessageDlg('Database not available.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  
+  if SaveWeatherEntry then
+    ModalResult := mrOK
+  else
+    MessageDlg('Failed to save weather entry.', mtError, [mbOK], 0);
+end;
+
+procedure TfrmWeatherEntry.btnCancelClick(Sender: TObject);
+begin
+  ModalResult := mrCancel;
+end;
+
+procedure TfrmWeatherEntry.btnClearClick(Sender: TObject);
+begin
+  if MessageDlg('Clear all fields?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    ClearForm;
+end;
+
+procedure TfrmWeatherEntry.cmbStationChange(Sender: TObject);
+begin
+  // Placeholder pour fonctionnalités futures
+end;
+
+end.
