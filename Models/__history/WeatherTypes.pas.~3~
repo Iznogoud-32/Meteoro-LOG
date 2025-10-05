@@ -98,18 +98,6 @@ type
     constructor Create;
   end;
 
-  type
-  TStationMarker = record
-    ID: string;
-    Name: string;
-    Latitude: Double;
-    Longitude: Double;
-    Status: TStationStatus;
-  end;
-
-  TStationMarkerList = class(TList<TStationMarker>)
-  end;
-
   // Weather entry class
   TWeatherEntry = class
   private

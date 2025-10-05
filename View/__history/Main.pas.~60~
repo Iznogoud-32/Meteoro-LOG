@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls,
   Vcl.Grids, System.Actions, Vcl.ActnList, Vcl.ExtCtrls, Vcl.Menus, Vcl.Themes,
-  System.Math, System.IOUtils, System.Json, System.Generics.Collections,
+  System.Math, System.IOUtils, System.Json,
   
   // Almdev StyleControl controls
   scControls, scModernControls, scStyledForm,
@@ -14,11 +14,11 @@ uses
   scGPControls, scGPExtControls,  scGPFontControls,
   // TMS Controls  
   AdvUtil, AdvObj, BaseGrid, AdvGrid, AdvListV, AdvPanel, AdvReflectionLabel,
-  //OSMMap controls
-  OSM.SlippyMapUtils, OSM.MapControl, OSM.TileStorage, OSM.NetworkRequest,
-  OSM.NetworkRequest.RTL, OSM.TilesProvider, OSM.TilesProvider.OSM,
   // Ohter controls
   mooncomp,
+
+  //
+  SHDocVw, MSHTML,
   
   scExtControls, scStyleManager, scAdvancedControls, scHint, scGPPagers,
   
@@ -28,28 +28,9 @@ uses
   StationPresenter, WeatherEntryPresenter, MainPresenter, System.ImageList,
   Vcl.ImgList, Vcl.VirtualImageList, Vcl.BaseImageCollection,
   Vcl.ImageCollection, Vcl.Imaging.pngimage,
-  StationMapPresenter, Vcl.OleCtrls, SHDocVw;
-
-const
-  {$IF NOT DECLARED(WM_APP)}
-  WM_APP = $8000;
-  {$IFEND}
-  MSG_GOTTILE = WM_APP + 200;
-
-  MaxLayer = 4;
+  StationMapPresenter, Vcl.OleCtrls;
 
 type
-  // Nice trick to avoid registering TMapControl as design-time component
-  TScrollBox = class(TMapControl)
-  end;
-
-  TGotTileData = record
-    Tile: TTile;
-    Ms: TMemoryStream;
-    Error: string;
-  end;
-  PGotTileData = ^TGotTileData;
-
   TFrmMain = class(TForm, IStationListView, IWeatherEntryListView, IMainView, IStationMapView)
     scStyledForm1: TscStyledForm;
     scGPClientPanel: TscGPPanel;
@@ -69,7 +50,7 @@ type
     // Menu
     MenuButton: TscGPGlyphButton;
     PopupMenu: TPopupMenu;
-    MenuNew: TMenuItem;
+    New: TMenuItem;
     Open: TMenuItem;
     Save: TMenuItem;
     SaveAs: TMenuItem;
@@ -313,7 +294,7 @@ type
     lblTotalStations: TLabel;
     btnRefreshStats: TButton;
     scStyleManager1: TscStyleManager;
-    mMap: TMapControl;
+    WebBrowser: TWebBrowser;
 
     // Form events
     procedure FormCreate(Sender: TObject);
@@ -371,13 +352,7 @@ type
     procedure btnMoonDetailsClick(Sender: TObject);
     procedure BtnSunDetailsClick(Sender: TObject);
 
-    // OsMMap
-    procedure MsgGotTile(var Message: TMessage); message MSG_GOTTILE;
-    procedure NetReqGotTileBgThr(const Tile: TTile; Ms: TMemoryStream; const Error: string);
-    procedure mMapMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-    function mMapGetTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal): TBitmap;
-    procedure mMapDrawTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal; const TopLeft: TPoint; Canvas: TCanvas; var Handled: Boolean);
-    procedure tsStationMapShow(Sender: TObject);
+    procedure WebBrowserDocumentComplete(ASender: TObject; const pDisp: IDispatch; const URL: OleVariant);
 
   private
     // Data layer
@@ -397,10 +372,8 @@ type
     FDisplayedStations: TWeatherStationList;
     FDisplayedEntries: TWeatherEntryList;
 
-    NetRequest: TNetworkRequestQueue;
-    TileStorage: TTileStorage;
-    MouseLBMode: TMapMouseMode;
-    FMapMarkToStationID: TDictionary<TMapMark, string>;
+    FMapReady: Boolean;
+    FMapPath: string;
 
     // IStationListView implementation
     procedure DisplayStations(const Stations: TWeatherStationList);
@@ -433,13 +406,12 @@ type
     procedure ClearStationCombo;
     procedure UpdateEntryActions;
 
-    procedure SetTilesProvider(TilesProviderClass: TTilesProviderClass);
-
     procedure DisplayMarkers(const Markers: TStationMarkerList);
     procedure ZoomToMarkers(const Markers: TStationMarkerList);
     procedure CenterOnStation(const Marker: TStationMarker);
-    procedure ClearMarkers;
-    procedure SetMapZoom(AZoom: Integer);
+
+    procedure ExecuteScript(const Script: string);
+    function GetStatusString(Status: TStationStatus): string;
 
   public
     { Public declarations }
@@ -489,12 +461,14 @@ begin
   FDisplayedStations := nil;
   FDisplayedEntries := nil;
 
+  FMapReady := False;
+  FMapPath := ExtractFilePath(Application.ExeName) + 'osm_map.html';
+
   InitializeLayers;
   InitializeUI;
   LoadStationTypes;
   LoadStationStatuses;
 
-  FMapMarkToStationID := TDictionary<TMapMark, string>.Create;
 end;
 
 procedure TFrmMain.InitializeLayers;
@@ -515,8 +489,6 @@ begin
 end;
 
 procedure TFrmMain.InitializeUI;
-var
-  tpc: TTilesProviderClass;
 begin
   // Timers
   tmrRefresh.Interval := 30000; // 30 seconds
@@ -527,18 +499,14 @@ begin
   pcDashboard.ActivePageIndex := 0;
   pcStations.ActivePageIndex := 0;
 
-  MouseLBMode := mmDragging;
-  mMap.SelectionShiftState := [ssLeft, ssShift];
-  mMap.DragShiftState := [ssRight];
-  mMap.OnDrawTile := mMapDrawTile;
-  mMap.MapMarkCaptionFont.Style := [fsItalic, fsBold];
-  // Memory/disc cache of tile images
-  // You probably won't need it if you have another fast storage (f.e. database)
-  TileStorage := TTileStorage.Create(50*1000*1000);
-  for tpc in TilesProviders do
-    if tpc.Name = 'OpenStreetMap' then
-     SetTilesProvider(tpc);
-  mMap.SetZoom(1);
+  // Initialize WebBrowser pour la carte
+  WebBrowser.OnDocumentComplete := WebBrowserDocumentComplete;
+
+  // Charger la carte HTML
+  if FileExists(FMapPath) then
+    WebBrowser.Navigate('file:///' + FMapPath)
+  else
+    ShowError('Map file not found: ' + FMapPath);
 end;
 
 procedure TFrmMain.FormShow(Sender: TObject);
@@ -570,11 +538,6 @@ begin
   tmrRefresh.Enabled := False;
   tmrSync.Enabled := False;
 
-  FMapMarkToStationID.Free;
-
-  FreeAndNil(NetRequest);
-  FreeAndNil(TileStorage);
-
   // Local data
   ClearStationCombo;
   FDisplayedStations.Free;
@@ -592,6 +555,7 @@ begin
   
   // Data layer
   FDatabase.Free;
+
 end;
 
 procedure TFrmMain.FormClose(Sender: TObject; var Action: TCloseAction);
@@ -1354,222 +1318,96 @@ begin
    end;
 end;
 
-procedure TfrmMain.SetTilesProvider(TilesProviderClass: TTilesProviderClass);
-var
-  s: string;
-  provider: TTilesProvider;
+procedure TFrmMain.WebBrowserDocumentComplete(ASender: TObject;
+  const pDisp: IDispatch; const URL: OleVariant);
 begin
-  // To check provider features, we have to create an instance
-  provider := TilesProviderClass.Create;
+  // La carte est prête
+  FMapReady := True;
 
-  TileStorage.FileCacheBaseDir := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) +
-    'Map' + PathDelim + provider.StorageID;
-  // Queuer of tile image network requests
-  // You won't need it if you have another source (f.e. database)
-  FreeAndNil(NetRequest);
-  NetRequest := TNetworkRequestQueue.Create(4, 3, NetworkRequest, provider.Clone);
-  NetRequest.RequestProps.HeaderLines := TStringList.Create;
-  NetRequest.OnGotTileBgThr := NetReqGotTileBgThr;
-  for s in SampleHeaders do
-    NetRequest.RequestProps.HeaderLines.Add(s);
-  mMap.TilesProvider := provider;
+  // Charger les marqueurs si on a déjà des stations
+  if Assigned(FStationMapPresenter) then
+    FStationMapPresenter.Initialize;
 end;
 
-function TfrmMain.mMapGetTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal): TBitmap;
+procedure TFrmMain.ExecuteScript(const Script: string);
 var
-  Tile: TTile;
+  Doc: IHTMLDocument2;
+  Window: IHTMLWindow2;
 begin
-  Tile.Zoom := Sender.Zoom;
-  Tile.ParameterX := TileHorzNum;
-  Tile.ParameterY := TileVertNum;
+  if not FMapReady then Exit;
 
-  // Query tile from storage
-  Result := TileStorage.GetTile(Tile);
-
-  // Tile image unavailable - queue network request
-  if Result = nil then
-  begin
-    // Network setup
-    NetRequest.RequestProps.Proxy := '';
-//    case rgProxy.ItemIndex of
-//      0: NetRequest.RequestProps.Proxy := '';
-//      1: NetRequest.RequestProps.Proxy := SystemProxy;
-//      2: NetRequest.RequestProps.Proxy := eProxyAddr.Text;
-//    end;
-    // Set current view area of the map so that tiles inside it will be downloaded first.
-    // This could be done in map's OnScroll event as well
-    NetRequest.SetCurrentViewRect(Sender.ViewRect);
-    NetRequest.RequestTile(Tile);
+  try
+    Doc := WebBrowser.Document as IHTMLDocument2;
+    if Assigned(Doc) then
+    begin
+      Window := Doc.parentWindow;
+      if Assigned(Window) then
+        Window.execScript(Script, 'JavaScript');
+    end;
+  except
+    on E: Exception do
+      ShowError('Script execution error: ' + E.Message);
   end;
 end;
 
-// Callback from map control to draw a tile image
-// ! This method is here for demo purposes only - it will only be called for
-// currently unavailable tiles that likely are queued for download.
-procedure TfrmMain.mMapDrawTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal; const TopLeft: TPoint; Canvas: TCanvas; var Handled: Boolean);
-var TileBmp: TBitmap;
+function TFrmMain.GetStatusString(Status: TStationStatus): string;
 begin
-  TileBmp := mMapGetTile(Sender, TileHorzNum, TileVertNum);
-  if TileBmp <> nil then
-  begin
-    Canvas.Draw(TopLeft.X, TopLeft.Y, TileBmp);
-    Handled := True;
-  end;
-end;
-
-// Start selecting / dragging on LMB press
-procedure TfrmMain.mMapMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-begin
-  if ShiftStateIs(Shift, [ssLeft]) and (TMapControl(Sender).MouseMode = mmNone) then
-    TMapControl(Sender).MouseMode := MouseLBMode;
-end;
-
-// Callback from a thread of network requester that request has been done
-// To avoid thread access troubles, re-post all the data to form
-procedure TfrmMain.NetReqGotTileBgThr(const Tile: TTile; Ms: TMemoryStream; const Error: string);
-var
-  pData: PGotTileData;
-begin
-  New(pData);
-  pData.Tile := Tile;
-  pData.Ms := Ms;
-  pData.Error := Error;
-  if not PostMessage(Handle, MSG_GOTTILE, 0, LPARAM(pData)) then
-  begin
-    Dispose(pData);
-    FreeAndNil(Ms);
-  end;
-end;
-
-procedure TfrmMain.MsgGotTile(var Message: TMessage);
-var
-  pData: PGotTileData;
-begin
-  pData := PGotTileData(Message.LParam);
-  if pData.Error <> '' then
-  begin
-    FreeAndNil(pData.Ms);
-  end
+  case Status of
+    ssActive: Result := 'active';
+    ssMaintenance: Result := 'maintenance';
+    ssError: Result := 'error';
+    ssInactive: Result := 'inactive';
+    ssTesting: Result := 'testing';
   else
-  begin
-      TileStorage.StoreTile(pData.Tile, pData.Ms);
-      mMap.RefreshTile(pData.Tile.ParameterX, pData.Tile.ParameterY);
+    Result := 'active';
   end;
-  Dispose(pData);
 end;
 
 procedure TFrmMain.DisplayMarkers(const Markers: TStationMarkerList);
 var
   Marker: TStationMarker;
-  GeoPoint: TGeoPoint;
-  MapMark: TMapMark;
-  GlyphShape: TMapMarkGlyphShape;
+  Script: string;
 begin
-  ClearMarkers;
+  if not FMapReady then Exit;
 
+  // Effacer les marqueurs existants
+  ExecuteScript('clearMarkers();');
+
+  // Ajouter chaque marqueur
   for Marker in Markers do
   begin
-    GeoPoint.Lat := Marker.Latitude;
-    GeoPoint.Long := Marker.Longitude;
-
-    // Choisir la forme selon le statut
-    case Marker.Status of
-      ssActive: GlyphShape := gshCircle;
-      ssMaintenance: GlyphShape := gshSquare;
-      ssInactive: GlyphShape := gshTriangle;
-      ssError: GlyphShape := gshTriangle;
-      ssTesting: GlyphShape := gshCircle;
-    else
-      GlyphShape := gshCircle;
-    end;
-
-    MapMark := mMap.MapMarks.Add(GeoPoint, Marker.Name, Ord(Marker.Status));
-    MapMark.CustomProps := [propGlyphStyle];
-    MapMark.GlyphStyle.Shape := GlyphShape;
-    MapMark.GlyphStyle.size := 10;
-
-    // Couleurs selon le statut
-    case Marker.Status of
-      ssActive: MapMark.GlyphStyle.BgColor := $00008000;
-      ssMaintenance: MapMark.GlyphStyle.BgColor := $000080FF;
-      ssInactive: MapMark.GlyphStyle.BgColor := $00808080;
-      ssError: MapMark.GlyphStyle.BgColor := $000000FF;
-      ssTesting: MapMark.GlyphStyle.BgColor := $00FF8000;
-    end;
-
-    // Stocker l'association MapMark -> StationID
-    FMapMarkToStationID.Add(MapMark, Marker.ID);
+    Script := Format(
+      'addMarker("%s", "%s", %f, %f, "%s", "%s");',
+      [Marker.ID,
+       StringReplace(Marker.Name, '"', '\"', [rfReplaceAll]),
+       Marker.Latitude,
+       Marker.Longitude,
+       GetStatusString(Marker.Status),
+       Marker.Status.ToString]
+    );
+    ExecuteScript(Script);
   end;
 
-  mMap.Invalidate;
+  // Zoomer sur les marqueurs
+  if Markers.Count > 0 then
+    ExecuteScript('zoomToMarkers();');
 end;
 
 procedure TFrmMain.ZoomToMarkers(const Markers: TStationMarkerList);
-var
-  MinLat, MaxLat, MinLong, MaxLong: Double;
-  CenterPoint: TGeoPoint;
-  I: Integer;
 begin
-  if Markers.Count = 0 then
-    Exit;
-
-  MinLat := Markers[0].Latitude;
-  MaxLat := Markers[0].Latitude;
-  MinLong := Markers[0].Longitude;
-  MaxLong := Markers[0].Longitude;
-
-  for I := 1 to Markers.Count - 1 do
-  begin
-    if Markers[I].Latitude < MinLat then MinLat := Markers[I].Latitude;
-    if Markers[I].Latitude > MaxLat then MaxLat := Markers[I].Latitude;
-    if Markers[I].Longitude < MinLong then MinLong := Markers[I].Longitude;
-    if Markers[I].Longitude > MaxLong then MaxLong := Markers[I].Longitude;
-  end;
-
-  CenterPoint.Lat := (MinLat + MaxLat) / 2;
-  CenterPoint.Long := (MinLong + MaxLong) / 2;
-
-  mMap.CenterPoint := CenterPoint;
-
-  // Ajuster le zoom selon l'étendue
-  if (MaxLat - MinLat > 10) or (MaxLong - MinLong > 10) then
-    mMap.SetZoom(6)
-  else if (MaxLat - MinLat > 1) or (MaxLong - MinLong > 1) then
-    mMap.SetZoom(10)
-  else
-    mMap.SetZoom(13);
+  if not FMapReady then Exit;
+  ExecuteScript('zoomToMarkers();');
 end;
 
 procedure TFrmMain.CenterOnStation(const Marker: TStationMarker);
 var
-  GeoPoint: TGeoPoint;
+  Script: string;
 begin
-  GeoPoint.Lat := Marker.Latitude;
-  GeoPoint.Long := Marker.Longitude;
+  if not FMapReady then Exit;
 
-  mMap.CenterPoint := GeoPoint;
-
-  if mMap.Zoom < 13 then
-    mMap.SetZoom(13);
-
-  mMap.Invalidate;
-end;
-
-procedure TFrmMain.ClearMarkers;
-begin
-  FMapMarkToStationID.Clear;
-  mMap.MapMarks.Clear;
-end;
-
-procedure TFrmMain.SetMapZoom(AZoom: Integer);
-begin
-  mMap.SetZoom(AZoom);
-end;
-
-procedure TFrmMain.tsStationMapShow(Sender: TObject);
-begin
-  if Assigned(FStationMapPresenter) then
-    FStationMapPresenter.Initialize;
+  Script := Format('centerOnStation(%f, %f, 15);',
+    [Marker.Latitude, Marker.Longitude]);
+  ExecuteScript(Script);
 end;
 
 end.

@@ -1,0 +1,122 @@
+unit StationMapPresenter;
+
+interface
+
+uses
+  System.SysUtils, System.Generics.Collections,
+  WeatherTypes, StationService;
+
+type
+  // Record pour transférer les données de marqueur
+  TStationMarker = record
+    ID: string;
+    Name: string;
+    Latitude: Double;
+    Longitude: Double;
+    Status: TStationStatus; // Pour la couleur
+  end;
+  TStationMarkerList = TObjectList<TStationMarker>;
+
+  // Interface de la Vue de la Carte
+  IStationMapView = interface
+    ['{F1B2C3D4-E5F6-7890-1234-567890ABCDEF}']
+    procedure DisplayMarkers(const Markers: TStationMarkerList);
+    procedure ZoomToMarkers(const Markers: TStationMarkerList);
+    procedure ShowError(const Message: string);
+  end;
+
+  TStationMapPresenter = class
+  private
+    FView: IStationMapView;
+    FService: TStationService;
+    procedure ConvertStationsToMarkers(const Stations: TWeatherStationList;
+                                       out Markers: TStationMarkerList);
+  public
+    constructor Create(AView: IStationMapView; AService: TStationService);
+    destructor Destroy; override;
+
+    procedure Initialize;
+    procedure LoadAllStations;
+    // Gère le clic sur un marqueur (ID) pour ouvrir le détail
+    procedure HandleMarkerClick(const AStationID: string);
+  end;
+
+implementation
+
+{ TStationMapPresenter }
+
+constructor TStationMapPresenter.Create(AView: IStationMapView; AService: TStationService);
+begin
+  inherited Create;
+  FView := AView;
+  FService := AService;
+end;
+
+destructor TStationMapPresenter.Destroy;
+begin
+  inherited;
+end;
+
+procedure TStationMapPresenter.ConvertStationsToMarkers(const Stations: TWeatherStationList;
+                                                       out Markers: TStationMarkerList);
+var
+  Station: TWeatherStation;
+  Marker: TStationMarker;
+begin
+  Markers := TStationMarkerList.Create(True);
+  for Station in Stations do
+  begin
+    Marker.ID := Station.ID;
+    Marker.Name := Station.Name;
+    Marker.Latitude := Station.Coordinates.Latitude;
+    Marker.Longitude := Station.Coordinates.Longitude;
+    Marker.Status := Station.Status;
+    Markers.Add(TStationMarker.Create(Marker));
+  end;
+end;
+
+procedure TStationMapPresenter.Initialize;
+begin
+  LoadAllStations;
+end;
+
+procedure TStationMapPresenter.LoadAllStations;
+var
+  Stations: TWeatherStationList;
+  Markers: TStationMarkerList;
+begin
+  try
+    Stations := FService.GetAllStations;
+    try
+      ConvertStationsToMarkers(Stations, Markers);
+      try
+        FView.DisplayMarkers(Markers);
+        // Centre la carte sur l'ensemble des stations
+        FView.ZoomToMarkers(Markers);
+      finally
+        Markers.Free;
+      end;
+    finally
+      Stations.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Erreur lors du chargement des stations pour la carte: ' + E.Message);
+  end;
+end;
+
+
+procedure TStationMapPresenter.HandleMarkerClick(const AStationID: string);
+begin
+  // Cette partie doit être gérée par le Formulaire principal (TFrmMain)
+  // ou un contrôleur, mais ici nous simulons une action de la Vue.
+
+  // Exemple d'action (doit être délégué à un autre service ou au TfrmMain)
+  FView.ShowError('Cliquer sur la station ' + AStationID + ' pour afficher les détails. ' +
+                  'Action à implémenter dans Main.pas: Afficher TfrmStationDetail.');
+
+  // Pour ouvrir le formulaire de détail (si vous l'aviez dans TFrmMain) :
+  // (Self as TFrmMain).ShowStationDetailForm(AStationID);
+end;
+
+end.

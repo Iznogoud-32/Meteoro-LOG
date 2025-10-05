@@ -5,6 +5,7 @@ program WeatherLOG;
 {$ENDIF}
 
 uses
+  System.SysUtils,
   Vcl.Forms,
   WeatherTypes in 'Models\WeatherTypes.pas',
   StationService in 'Business\StationService.pas',
@@ -22,7 +23,10 @@ uses
   WeatherEntryForm in 'View\WeatherEntryForm.pas' {frmWeatherEntry},
   MoonDetails in 'View\MoonDetails.pas' {MoonForm},
   SunDetails in 'View\SunDetails.pas' {SunForm},
-  Almanac in 'Business\Almanac.pas';
+  Almanac in 'Business\Almanac.pas',
+  Vcl.Themes,
+  Vcl.Styles,
+  StationMapPresenter in 'Presenters\StationMapPresenter.pas';
 
 {$R *.res}
 

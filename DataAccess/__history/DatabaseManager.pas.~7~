@@ -83,7 +83,7 @@ uses
   System.JSON, DateUtils, Math, StrUtils, IOUtils;
 
 const
-  DATABASE_VERSION = 2;
+  DATABASE_VERSION = 1;
   DEFAULT_DATABASE_NAME = 'weather_logger.db';
 
 { TDatabaseManager }
@@ -227,24 +227,13 @@ begin
         temperature REAL NOT NULL,
         humidity REAL NOT NULL,
         pressure REAL NOT NULL,
-        precipitations REAL NOT NULL DEFAULT 0,
-        conditions TEXT NOT NULL,
-        notes TEXT,
         wind_speed REAL NOT NULL,
         wind_gust REAL NOT NULL DEFAULT 0,
         wind_direction TEXT NOT NULL,
-        solar_radiation REAL,
-        UV_radiation REAL,
-        IR_radiation REAL,
-        visibility REAL,
-        cloud_coverage REAL,
-        cloud_height REAL,
-        cloud_type TEXT,
-        soil_temp REAL,
-        soil_moist REAL,
-        dew_point REAL,
+        conditions TEXT NOT NULL,
+        precipitations REAL NOT NULL DEFAULT 0,
         snow REAL NOT NULL DEFAULT 0,
-        AQI TEXT,
+        notes TEXT,
         photo TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -345,13 +334,11 @@ var
 begin
   Query := CreateQuery;
   try
-    Query.SQL.Text :=
-      'INSERT OR REPLACE INTO database_info (keyname, value) ' +
-      'VALUES (:keyname, :value)';
-
-    Query.ParamByName('keyname').AsString := 'version';
-    Query.ParamByName('value').AsString := IntToStr(version);
-
+   Query.SQL.Text := '''
+      INSERT OR REPLACE INTO database_info (key, value)
+      VALUES (''version'', :version)
+    ''';
+    Query.ParamByName('version').AsString := IntToStr(Version);
     Query.ExecSQL;
   finally
     Query.Free;

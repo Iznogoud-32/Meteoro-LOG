@@ -1476,7 +1476,7 @@ begin
     case Marker.Status of
       ssActive: GlyphShape := gshCircle;
       ssMaintenance: GlyphShape := gshSquare;
-      ssInactive: GlyphShape := gshTriangle;
+      ssInactive: GlyphShape := gshCircle;
       ssError: GlyphShape := gshTriangle;
       ssTesting: GlyphShape := gshCircle;
     else
@@ -1486,15 +1486,14 @@ begin
     MapMark := mMap.MapMarks.Add(GeoPoint, Marker.Name, Ord(Marker.Status));
     MapMark.CustomProps := [propGlyphStyle];
     MapMark.GlyphStyle.Shape := GlyphShape;
-    MapMark.GlyphStyle.size := 10;
 
     // Couleurs selon le statut
     case Marker.Status of
-      ssActive: MapMark.GlyphStyle.BgColor := $00008000;
-      ssMaintenance: MapMark.GlyphStyle.BgColor := $000080FF;
-      ssInactive: MapMark.GlyphStyle.BgColor := $00808080;
-      ssError: MapMark.GlyphStyle.BgColor := $000000FF;
-      ssTesting: MapMark.GlyphStyle.BgColor := $00FF8000;
+      ssActive: MapMark.GlyphStyle.BorderColor := $00008000;
+      ssMaintenance: MapMark.GlyphStyle.BorderColor := $000080FF;
+      ssInactive: MapMark.GlyphStyle.BorderColor := $00808080;
+      ssError: MapMark.GlyphStyle.BorderColor := $000000FF;
+      ssTesting: MapMark.GlyphStyle.BorderColor := $00FF8000;
     end;
 
     // Stocker l'association MapMark -> StationID

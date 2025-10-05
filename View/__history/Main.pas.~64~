@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls,
   Vcl.Grids, System.Actions, Vcl.ActnList, Vcl.ExtCtrls, Vcl.Menus, Vcl.Themes,
-  System.Math, System.IOUtils, System.Json, System.Generics.Collections,
+  System.Math, System.IOUtils, System.Json,
   
   // Almdev StyleControl controls
   scControls, scModernControls, scStyledForm,
@@ -50,7 +50,7 @@ type
   end;
   PGotTileData = ^TGotTileData;
 
-  TFrmMain = class(TForm, IStationListView, IWeatherEntryListView, IMainView, IStationMapView)
+  TFrmMain = class(TForm, IStationListView, IWeatherEntryListView, IMainView)
     scStyledForm1: TscStyledForm;
     scGPClientPanel: TscGPPanel;
     scGPFormPanel: TscGPPanel;
@@ -377,7 +377,9 @@ type
     procedure mMapMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     function mMapGetTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal): TBitmap;
     procedure mMapDrawTile(Sender: TMapControl; TileHorzNum, TileVertNum: Cardinal; const TopLeft: TPoint; Canvas: TCanvas; var Handled: Boolean);
-    procedure tsStationMapShow(Sender: TObject);
+    procedure btnAddRandomMapMarksClick(Sender: TObject);
+    procedure chbCacheUseFilesClick(Sender: TObject);
+    procedure chbCacheSaveFilesClick(Sender: TObject);
 
   private
     // Data layer
@@ -400,7 +402,6 @@ type
     NetRequest: TNetworkRequestQueue;
     TileStorage: TTileStorage;
     MouseLBMode: TMapMouseMode;
-    FMapMarkToStationID: TDictionary<TMapMark, string>;
 
     // IStationListView implementation
     procedure DisplayStations(const Stations: TWeatherStationList);
@@ -434,12 +435,6 @@ type
     procedure UpdateEntryActions;
 
     procedure SetTilesProvider(TilesProviderClass: TTilesProviderClass);
-
-    procedure DisplayMarkers(const Markers: TStationMarkerList);
-    procedure ZoomToMarkers(const Markers: TStationMarkerList);
-    procedure CenterOnStation(const Marker: TStationMarker);
-    procedure ClearMarkers;
-    procedure SetMapZoom(AZoom: Integer);
 
   public
     { Public declarations }
@@ -493,8 +488,6 @@ begin
   InitializeUI;
   LoadStationTypes;
   LoadStationStatuses;
-
-  FMapMarkToStationID := TDictionary<TMapMark, string>.Create;
 end;
 
 procedure TFrmMain.InitializeLayers;
@@ -510,7 +503,7 @@ begin
   FMainPresenter := TMainPresenter.Create(Self, FStationService, FWeatherEntryService);
   FStationPresenter := TStationListPresenter.Create(Self, FStationService);
   FWeatherEntryPresenter := TWeatherEntryListPresenter.Create(Self, FWeatherEntryService);
-  FStationMapPresenter := TStationMapPresenter.Create(Self, FStationService);
+//  FStationMapPresenter := TStationMapPresenter.Create(Self, FStationService);
 
 end;
 
@@ -569,8 +562,6 @@ procedure TFrmMain.FormDestroy(Sender: TObject);
 begin
   tmrRefresh.Enabled := False;
   tmrSync.Enabled := False;
-
-  FMapMarkToStationID.Free;
 
   FreeAndNil(NetRequest);
   FreeAndNil(TileStorage);
@@ -1458,118 +1449,36 @@ begin
   Dispose(pData);
 end;
 
-procedure TFrmMain.DisplayMarkers(const Markers: TStationMarkerList);
+procedure TfrmMain.btnAddRandomMapMarksClick(Sender: TObject);
 var
-  Marker: TStationMarker;
-  GeoPoint: TGeoPoint;
-  MapMark: TMapMark;
-  GlyphShape: TMapMarkGlyphShape;
+  LGeoPoint: TGeoPoint;
 begin
-  ClearMarkers;
-
-  for Marker in Markers do
-  begin
-    GeoPoint.Lat := Marker.Latitude;
-    GeoPoint.Long := Marker.Longitude;
-
-    // Choisir la forme selon le statut
-    case Marker.Status of
-      ssActive: GlyphShape := gshCircle;
-      ssMaintenance: GlyphShape := gshSquare;
-      ssInactive: GlyphShape := gshTriangle;
-      ssError: GlyphShape := gshTriangle;
-      ssTesting: GlyphShape := gshCircle;
-    else
-      GlyphShape := gshCircle;
-    end;
-
-    MapMark := mMap.MapMarks.Add(GeoPoint, Marker.Name, Ord(Marker.Status));
-    MapMark.CustomProps := [propGlyphStyle];
-    MapMark.GlyphStyle.Shape := GlyphShape;
-    MapMark.GlyphStyle.size := 10;
-
-    // Couleurs selon le statut
-    case Marker.Status of
-      ssActive: MapMark.GlyphStyle.BgColor := $00008000;
-      ssMaintenance: MapMark.GlyphStyle.BgColor := $000080FF;
-      ssInactive: MapMark.GlyphStyle.BgColor := $00808080;
-      ssError: MapMark.GlyphStyle.BgColor := $000000FF;
-      ssTesting: MapMark.GlyphStyle.BgColor := $00FF8000;
-    end;
-
-    // Stocker l'association MapMark -> StationID
-    FMapMarkToStationID.Add(MapMark, Marker.ID);
+  LGeoPoint.Long := 12.0;
+  LGeoPoint.Lat := 12.0;
+  if mMap.Zoom < 10 then
+    mMap.SetZoom(10);
+  mMap.CenterPoint := LGeoPoint;
+with mMap.MapMarks.Add(LGeoPoint, 'Station', 1) do
+     begin
+      CustomProps := [propGlyphStyle];
+      GlyphStyle.Shape := TMapMarkGlyphShape(Random(Ord(High(TMapMarkGlyphShape)) + 1));
   end;
-
   mMap.Invalidate;
 end;
 
-procedure TFrmMain.ZoomToMarkers(const Markers: TStationMarkerList);
-var
-  MinLat, MaxLat, MinLong, MaxLong: Double;
-  CenterPoint: TGeoPoint;
-  I: Integer;
+procedure TfrmMain.chbCacheUseFilesClick(Sender: TObject);
 begin
-  if Markers.Count = 0 then
-    Exit;
-
-  MinLat := Markers[0].Latitude;
-  MaxLat := Markers[0].Latitude;
-  MinLong := Markers[0].Longitude;
-  MaxLong := Markers[0].Longitude;
-
-  for I := 1 to Markers.Count - 1 do
-  begin
-    if Markers[I].Latitude < MinLat then MinLat := Markers[I].Latitude;
-    if Markers[I].Latitude > MaxLat then MaxLat := Markers[I].Latitude;
-    if Markers[I].Longitude < MinLong then MinLong := Markers[I].Longitude;
-    if Markers[I].Longitude > MaxLong then MaxLong := Markers[I].Longitude;
-  end;
-
-  CenterPoint.Lat := (MinLat + MaxLat) / 2;
-  CenterPoint.Long := (MinLong + MaxLong) / 2;
-
-  mMap.CenterPoint := CenterPoint;
-
-  // Ajuster le zoom selon l'étendue
-  if (MaxLat - MinLat > 10) or (MaxLong - MinLong > 10) then
-    mMap.SetZoom(6)
-  else if (MaxLat - MinLat > 1) or (MaxLong - MinLong > 1) then
-    mMap.SetZoom(10)
-  else
-    mMap.SetZoom(13);
+  if (Sender as TCheckBox).Checked
+    then TileStorage.Options := TileStorage.Options - [tsoNoFileCache]
+    else TileStorage.Options := TileStorage.Options + [tsoNoFileCache];
 end;
 
-procedure TFrmMain.CenterOnStation(const Marker: TStationMarker);
-var
-  GeoPoint: TGeoPoint;
+procedure TfrmMain.chbCacheSaveFilesClick(Sender: TObject);
 begin
-  GeoPoint.Lat := Marker.Latitude;
-  GeoPoint.Long := Marker.Longitude;
-
-  mMap.CenterPoint := GeoPoint;
-
-  if mMap.Zoom < 13 then
-    mMap.SetZoom(13);
-
-  mMap.Invalidate;
+  if (Sender as TCheckBox).Checked
+    then TileStorage.Options := TileStorage.Options - [tsoReadOnlyFileCache]
+    else TileStorage.Options := TileStorage.Options + [tsoReadOnlyFileCache];
 end;
 
-procedure TFrmMain.ClearMarkers;
-begin
-  FMapMarkToStationID.Clear;
-  mMap.MapMarks.Clear;
-end;
-
-procedure TFrmMain.SetMapZoom(AZoom: Integer);
-begin
-  mMap.SetZoom(AZoom);
-end;
-
-procedure TFrmMain.tsStationMapShow(Sender: TObject);
-begin
-  if Assigned(FStationMapPresenter) then
-    FStationMapPresenter.Initialize;
-end;
 
 end.

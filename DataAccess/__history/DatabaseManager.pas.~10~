@@ -281,7 +281,7 @@ begin
 
     // Set initial database version
     if GetDatabaseVersion = 0 then
-      SetDatabaseVersion(DATABASE_VERSION);
+      //SetDatabaseVersion(DATABASE_VERSION);
 
   finally
     TableQuery.Free;

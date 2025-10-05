@@ -281,7 +281,7 @@ begin
 
     // Set initial database version
     if GetDatabaseVersion = 0 then
-      SetDatabaseVersion(DATABASE_VERSION);
+      //SetDatabaseVersion(DATABASE_VERSION);
 
   finally
     TableQuery.Free;
@@ -345,13 +345,11 @@ var
 begin
   Query := CreateQuery;
   try
-    Query.SQL.Text :=
-      'INSERT OR REPLACE INTO database_info (keyname, value) ' +
-      'VALUES (:keyname, :value)';
-
-    Query.ParamByName('keyname').AsString := 'version';
-    Query.ParamByName('value').AsString := IntToStr(version);
-
+   Query.SQL.Text := '''
+      INSERT OR REPLACE INTO database_info (key, value)
+      VALUES (''version'', :version)
+    ''';
+    Query.ParamByName('version').AsString := IntToStr(Version);
     Query.ExecSQL;
   finally
     Query.Free;

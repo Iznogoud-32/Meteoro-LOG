@@ -1,0 +1,193 @@
+unit StationMapPresenter;
+
+interface
+
+uses
+  System.SysUtils, System.Generics.Collections,
+  WeatherTypes, StationService;
+
+type
+  IStationMapView = interface
+    ['{8F9E0D1C-2B3A-4567-89AB-CDEF01234567}']
+    procedure DisplayMarkers(const Markers: TStationMarkerList);
+    procedure ZoomToMarkers(const Markers: TStationMarkerList);
+    procedure CenterOnStation(const Marker: TStationMarker);
+    procedure ShowError(const Message: string);
+  end;
+
+  TStationMapPresenter = class
+  private
+    FView: IStationMapView;
+    FStationService: TStationService;
+
+    function ConvertStationToMarker(const Station: TWeatherStation): TStationMarker;
+  public
+    constructor Create(AView: IStationMapView; AStationService: TStationService);
+    destructor Destroy; override;
+
+    procedure Initialize;
+    procedure LoadAllStations;
+    procedure LoadStationsByStatus(AStatus: TStationStatus);
+    procedure LoadStationsByType(AType: TStationType);
+    procedure ShowStation(AStationID: string);
+  end;
+
+implementation
+
+{ TStationMapPresenter }
+
+constructor TStationMapPresenter.Create(AView: IStationMapView;
+  AStationService: TStationService);
+begin
+  inherited Create;
+  FView := AView;
+  FStationService := AStationService;
+end;
+
+destructor TStationMapPresenter.Destroy;
+begin
+  inherited;
+end;
+
+procedure TStationMapPresenter.Initialize;
+begin
+  LoadAllStations;
+end;
+
+function TStationMapPresenter.ConvertStationToMarker(
+  const Station: TWeatherStation): TStationMarker;
+begin
+  Result.ID := Station.ID;
+  Result.Name := Station.Name;
+  Result.Latitude := Station.Coordinates.Latitude;
+  Result.Longitude := Station.Coordinates.Longitude;
+  Result.Status := Station.Status;
+end;
+
+procedure TStationMapPresenter.LoadAllStations;
+var
+  Stations: TWeatherStationList;
+  Station: TWeatherStation;
+  Markers: TStationMarkerList;
+  Marker: TStationMarker;
+begin
+  try
+    Markers := TStationMarkerList.Create;
+    try
+      Stations := FStationService.GetAllStations;
+      try
+        for Station in Stations do
+        begin
+          Marker := ConvertStationToMarker(Station);
+          Markers.Add(Marker);
+        end;
+
+        FView.DisplayMarkers(Markers);
+        FView.ZoomToMarkers(Markers);
+      finally
+        Stations.Free;
+      end;
+    finally
+      Markers.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error loading stations on map: ' + E.Message);
+  end;
+end;
+
+procedure TStationMapPresenter.LoadStationsByStatus(AStatus: TStationStatus);
+var
+  Filter: TStationFilter;
+  Stations: TWeatherStationList;
+  Station: TWeatherStation;
+  Markers: TStationMarkerList;
+  Marker: TStationMarker;
+begin
+  try
+    Markers := TStationMarkerList.Create;
+    try
+      Filter := TStationFilter.All;
+      Filter.Status := AStatus;
+
+      Stations := FStationService.GetStations(Filter);
+      try
+        for Station in Stations do
+        begin
+          Marker := ConvertStationToMarker(Station);
+          Markers.Add(Marker);
+        end;
+
+        FView.DisplayMarkers(Markers);
+        FView.ZoomToMarkers(Markers);
+      finally
+        Stations.Free;
+      end;
+    finally
+      Markers.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error filtering stations on map: ' + E.Message);
+  end;
+end;
+
+procedure TStationMapPresenter.LoadStationsByType(AType: TStationType);
+var
+  Filter: TStationFilter;
+  Stations: TWeatherStationList;
+  Station: TWeatherStation;
+  Markers: TStationMarkerList;
+  Marker: TStationMarker;
+begin
+  try
+    Markers := TStationMarkerList.Create;
+    try
+      Filter := TStationFilter.All;
+      Filter.StationType := AType;
+
+      Stations := FStationService.GetStations(Filter);
+      try
+        for Station in Stations do
+        begin
+          Marker := ConvertStationToMarker(Station);
+          Markers.Add(Marker);
+        end;
+
+        FView.DisplayMarkers(Markers);
+        FView.ZoomToMarkers(Markers);
+      finally
+        Stations.Free;
+      end;
+    finally
+      Markers.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error filtering stations on map: ' + E.Message);
+  end;
+end;
+
+procedure TStationMapPresenter.ShowStation(AStationID: string);
+var
+  Station: TWeatherStation;
+  Marker: TStationMarker;
+begin
+  try
+    Station := FStationService.GetStation(AStationID);
+    try
+      if Assigned(Station) then
+      begin
+        Marker := ConvertStationToMarker(Station);
+        FView.CenterOnStation(Marker);
+      end;
+    finally
+      Station.Free;
+    end;
+  except
+    on E: Exception do
+      FView.ShowError('Error centering on station: ' + E.Message);
+  end;
+end;
+
+end.

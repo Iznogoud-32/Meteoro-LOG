@@ -83,7 +83,7 @@ uses
   System.JSON, DateUtils, Math, StrUtils, IOUtils;
 
 const
-  DATABASE_VERSION = 2;
+  DATABASE_VERSION = 1;
   DEFAULT_DATABASE_NAME = 'weather_logger.db';
 
 { TDatabaseManager }
@@ -227,24 +227,13 @@ begin
         temperature REAL NOT NULL,
         humidity REAL NOT NULL,
         pressure REAL NOT NULL,
-        precipitations REAL NOT NULL DEFAULT 0,
-        conditions TEXT NOT NULL,
-        notes TEXT,
         wind_speed REAL NOT NULL,
         wind_gust REAL NOT NULL DEFAULT 0,
         wind_direction TEXT NOT NULL,
-        solar_radiation REAL,
-        UV_radiation REAL,
-        IR_radiation REAL,
-        visibility REAL,
-        cloud_coverage REAL,
-        cloud_height REAL,
-        cloud_type TEXT,
-        soil_temp REAL,
-        soil_moist REAL,
-        dew_point REAL,
+        conditions TEXT NOT NULL,
+        precipitations REAL NOT NULL DEFAULT 0,
         snow REAL NOT NULL DEFAULT 0,
-        AQI TEXT,
+        notes TEXT,
         photo TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -278,11 +267,6 @@ begin
 
     TableQuery.SQL.Text := 'CREATE INDEX IF NOT EXISTS idx_sensors_station ON Sensors(StationID)';
     TableQuery.ExecSQL;
-
-    // Set initial database version
-    if GetDatabaseVersion = 0 then
-      SetDatabaseVersion(DATABASE_VERSION);
-
   finally
     TableQuery.Free;
   end;
@@ -298,64 +282,41 @@ begin
   if CurrentVersion < DATABASE_VERSION then
   begin
     // Perform migrations
-    SetDatabaseVersion(DATABASE_VERSION);
+    //SetDatabaseVersion(DATABASE_VERSION);
   end;
 end;
 
 function TDatabaseManager.TableExists(const TableName: string): Boolean;
-var
-  TableQuery: TFDQuery;
 begin
-  TableQuery := CreateQuery;
-  try
-    TableQuery := CreateQuery;
-    TableQuery.SQL.Text := 'SELECT name FROM sqlite_master WHERE type=''table'' AND name=:table_name';
-    TableQuery.ParamByName('table_name').AsString := TableName;
-    TableQuery.Open;
-    Result := not TableQuery.Eof;
-  finally
-    TableQuery.Free;
-  end;
+  FQuery.SQL.Text := 'SELECT name FROM sqlite_master WHERE type=''table'' AND name=:table_name';
+  FQuery.ParamByName('table_name').AsString := TableName;
+  FQuery.Open;
+  Result := not FQuery.Eof;
+  FQuery.Close;
 end;
 
 function TDatabaseManager.GetDatabaseVersion: Integer;
-var
-  Query: TFDQuery;
 begin
   Result := 0;
-  Query := CreateQuery;
   try
-    try
-      Query.SQL.Text := 'SELECT value FROM database_info WHERE key = ''version''';
-      Query.Open;
-      if not Query.Eof then
-        Result := StrToIntDef(Query.FieldByName('value').AsString, 0);
-      Query.Close;
-    except
-      Result := 0;
-    end;
-  finally
-    Query.Free;
+    FQuery.SQL.Text := 'SELECT value FROM database_info WHERE key = ''version''';
+    FQuery.Open;
+    if not FQuery.Eof then
+      Result := StrToIntDef(FQuery.FieldByName('value').AsString, 0);
+    FQuery.Close;
+  except
+    Result := 0;
   end;
 end;
 
 procedure TDatabaseManager.SetDatabaseVersion(Version: Integer);
-var
-  Query: TFDQuery;
 begin
-  Query := CreateQuery;
-  try
-    Query.SQL.Text :=
-      'INSERT OR REPLACE INTO database_info (keyname, value) ' +
-      'VALUES (:keyname, :value)';
-
-    Query.ParamByName('keyname').AsString := 'version';
-    Query.ParamByName('value').AsString := IntToStr(version);
-
-    Query.ExecSQL;
-  finally
-    Query.Free;
-  end;
+  FQuery.SQL.Text := '''
+    INSERT OR REPLACE INTO database_info (key, value)
+    VALUES (''version'', :version)
+  ''';
+  FQuery.ParamByName('version').AsString := IntToStr(Version);
+  FQuery.ExecSQL;
 end;
 
 function TDatabaseManager.BackupDatabase(const BackupPath: string): Boolean;
@@ -402,25 +363,18 @@ begin
 end;
 
 function TDatabaseManager.ClearAllData: Boolean;
-var
-  Query: TFDQuery;
 begin
   Result := False;
-  Query := CreateQuery;
   try
-    try
-      Query.SQL.Text := 'DELETE FROM weather_entries';
-      Query.ExecSQL;
-      Query.SQL.Text := 'DELETE FROM weather_stations';
-      Query.ExecSQL;
-      Query.SQL.Text := 'DELETE FROM settings WHERE key NOT LIKE ''system_%''';
-      Query.ExecSQL;
-      Result := True;
-    except
-      Result := False;
-    end;
-  finally
-    Query.Free
+    FQuery.SQL.Text := 'DELETE FROM weather_entries';
+    FQuery.ExecSQL;
+    FQuery.SQL.Text := 'DELETE FROM weather_stations';
+    FQuery.ExecSQL;
+    FQuery.SQL.Text := 'DELETE FROM settings WHERE key NOT LIKE ''system_%''';
+    FQuery.ExecSQL;
+    Result := True;
+  except
+    Result := False;
   end;
 end;
 

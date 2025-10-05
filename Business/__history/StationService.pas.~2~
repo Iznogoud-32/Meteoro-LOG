@@ -42,7 +42,6 @@ type
     function FilterStations(const AFilter: TStationFilter): TWeatherStationList;
     function SearchStations(const ASearchText: string): TWeatherStationList;
     function GetActiveStations: TWeatherStationList;
-    function IsStationActive(const AStationID: string): Boolean;
     
     // Statistics
     function GetStatistics: TStationStatistics;
@@ -166,20 +165,6 @@ begin
   Filter := TStationFilter.All;
   Filter.Status := ssActive;
   Result := FilterStations(Filter);
-end;
-
-function TStationService.IsStationActive(const AStationID: string): Boolean;
-var
-  Station: TWeatherStation;
-begin
-  Result := False;
-  Station := GetStation(AStationID);
-  if Assigned(Station) then
-  try
-    Result := Station.Status = ssActive;
-  finally
-    Station.Free;
-  end;
 end;
 
 function TStationService.GetStatistics: TStationStatistics;

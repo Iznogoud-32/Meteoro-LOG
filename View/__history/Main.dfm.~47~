@@ -4558,6 +4558,7 @@ object FrmMain: TFrmMain
                 FullDrag = True
                 GridLines = True
                 HideSelection = False
+                Items.ItemData = {050000000000000000}
                 ReadOnly = True
                 RowSelect = True
                 TabOrder = 1
@@ -4594,13 +4595,12 @@ object FrmMain: TFrmMain
                 DetailView.Font.Name = 'Segoe UI'
                 DetailView.Font.Style = []
                 Version = '1.9.1.1'
-                ExplicitHeight = 523
+                ExplicitWidth = 1090
               end
             end
             object tsStationMap: TTabSheet
               Caption = 'Carte'
               ImageIndex = 1
-              OnShow = tsStationMapShow
               object pnlMapHeader: TPanel
                 Left = 0
                 Top = 0
@@ -4628,17 +4628,15 @@ object FrmMain: TFrmMain
                 Top = 60
                 Width = 1091
                 Height = 524
-                HorzScrollBar.Range = 256
                 HorzScrollBar.Tracking = True
-                VertScrollBar.Range = 256
                 VertScrollBar.Tracking = True
                 Align = alClient
-                AutoScroll = False
-                DoubleBuffered = True
                 DragCursor = crSizeAll
-                ParentDoubleBuffered = False
                 TabOrder = 1
-                OnMouseDown = mMapMouseDown
+                ExplicitLeft = 352
+                ExplicitTop = 256
+                ExplicitWidth = 185
+                ExplicitHeight = 41
               end
             end
           end

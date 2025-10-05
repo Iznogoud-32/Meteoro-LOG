@@ -4600,7 +4600,6 @@ object FrmMain: TFrmMain
             object tsStationMap: TTabSheet
               Caption = 'Carte'
               ImageIndex = 1
-              OnShow = tsStationMapShow
               object pnlMapHeader: TPanel
                 Left = 0
                 Top = 0
@@ -4622,23 +4621,6 @@ object FrmMain: TFrmMain
                   Font.Style = [fsBold]
                   ParentFont = False
                 end
-              end
-              object mMap: TMapControl
-                Left = 0
-                Top = 60
-                Width = 1091
-                Height = 524
-                HorzScrollBar.Range = 256
-                HorzScrollBar.Tracking = True
-                VertScrollBar.Range = 256
-                VertScrollBar.Tracking = True
-                Align = alClient
-                AutoScroll = False
-                DoubleBuffered = True
-                DragCursor = crSizeAll
-                ParentDoubleBuffered = False
-                TabOrder = 1
-                OnMouseDown = mMapMouseDown
               end
             end
           end
@@ -5636,7 +5618,7 @@ object FrmMain: TFrmMain
     Alignment = paCenter
     Left = 24
     Top = 584
-    object MenuNew: TMenuItem
+    object New: TMenuItem
       Caption = '&New'
     end
     object Open: TMenuItem
